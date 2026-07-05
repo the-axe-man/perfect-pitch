@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { samplePitches } from "@/lib/samplePitches";
+import challenge from "@/challenges/current.json";
+
+const samplePitches = challenge.pitches;
 
 const pitchTypes = [
   "Four-Seam Fastball",
@@ -10,6 +12,8 @@ const pitchTypes = [
   "Curveball",
   "Sinker",
   "Cutter",
+  "Splitter",
+  "Sweeper",
 ];
 
 type PitchResult = {
@@ -32,6 +36,17 @@ export default function Home() {
 
   const actualPitch = samplePitches[pitchIndex];
 
+  function plateXToScreen(plateX: number) {
+    return Math.round(((plateX + 2) / 4) * 320);
+  }
+
+  function plateZToScreen(plateZ: number) {
+    return Math.round(384 - (plateZ / 5) * 384);
+  }
+
+  const actualX = plateXToScreen(actualPitch.plateX);
+  const actualY = plateZToScreen(actualPitch.plateZ);
+
   function handleClick(e: React.MouseEvent<HTMLDivElement>) {
     if (revealed) return;
 
@@ -46,8 +61,7 @@ export default function Home() {
     if (!guess) return null;
 
     const distance = Math.sqrt(
-      Math.pow(guess.x - actualPitch.x, 2) +
-        Math.pow(guess.y - actualPitch.y, 2)
+      Math.pow(guess.x - actualX, 2) + Math.pow(guess.y - actualY, 2)
     );
 
     const locationScore = Math.max(0, Math.round(100 - distance / 2));
@@ -108,13 +122,27 @@ export default function Home() {
     (sum, result) => sum + result.pitchTypeScore,
     0
   );
+
+  const pitchTypeAccuracy =
+    results.length > 0
+      ? Math.round(
+          (results.filter((result) => result.pitchTypeScore === 100).length /
+            results.length) *
+            100
+        )
+      : 0;
+
+  const averageLocation =
+    results.length > 0 ? Math.round(locationTotal / results.length) : 0;
+
   const perfectPitchTypes =
     results.length > 0 && results.every((result) => result.pitchTypeScore === 100);
+
   const sniper =
     results.length > 0 && results.every((result) => result.locationScore >= 80);
-  const painter =
-    results.length > 0 &&
-    locationTotal / results.length >= 85;
+
+  const painter = results.length > 0 && averageLocation >= 85;
+
   const lockedIn = finalScore >= 500;
 
   if (gameComplete) {
@@ -122,7 +150,7 @@ export default function Home() {
       <main className="min-h-screen bg-slate-950 text-white flex flex-col items-center p-8">
         <section className="w-full max-w-xl text-center">
           <h1 className="text-5xl font-bold mt-8 mb-2">Perfect Pitch</h1>
-          <p className="text-slate-300 mb-8">At-bat complete.</p>
+          <p className="text-slate-300 mb-8">{challenge.title}</p>
 
           <div className="rounded-2xl border border-slate-700 bg-slate-900 p-6 mb-6">
             <p className="text-slate-400 mb-2">Final Score</p>
@@ -131,12 +159,12 @@ export default function Home() {
 
           <div className="grid grid-cols-2 gap-3 mb-6">
             <div className="rounded-xl bg-slate-900 p-4">
-              <p className="text-slate-400 text-sm">Location</p>
-              <p className="text-2xl font-bold">{locationTotal}</p>
+              <p className="text-slate-400 text-sm">Avg Location</p>
+              <p className="text-2xl font-bold">{averageLocation}</p>
             </div>
             <div className="rounded-xl bg-slate-900 p-4">
               <p className="text-slate-400 text-sm">Pitch Type</p>
-              <p className="text-2xl font-bold">{pitchTypeTotal}</p>
+              <p className="text-2xl font-bold">{pitchTypeAccuracy}%</p>
             </div>
           </div>
 
@@ -197,18 +225,21 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-slate-950 text-white flex flex-col items-center p-8">
       <h1 className="text-5xl font-bold mt-8 mb-2">Perfect Pitch</h1>
+
       <p className="text-slate-300 mb-8">
         Guess the next pitch location and pitch type.
       </p>
 
       <section className="mb-6 text-center">
         <p className="text-xl font-semibold">
-          {actualPitch.awayTeam} {actualPitch.awayScore} · {actualPitch.homeTeam}{" "}
-          {actualPitch.homeScore}
+          {actualPitch.awayTeam} {actualPitch.awayScore} ·{" "}
+          {actualPitch.homeTeam} {actualPitch.homeScore}
         </p>
+
         <p className="text-slate-300">
           {actualPitch.inning} · {actualPitch.outs} Out · {actualPitch.count} Count
         </p>
+
         <p className="text-slate-300">
           {actualPitch.batter} vs {actualPitch.pitcher}
         </p>
@@ -230,7 +261,7 @@ export default function Home() {
         {revealed && (
           <div
             className="absolute w-5 h-5 bg-green-400 rounded-full -translate-x-1/2 -translate-y-1/2"
-            style={{ left: actualPitch.x, top: actualPitch.y }}
+            style={{ left: actualX, top: actualY }}
           />
         )}
       </div>
@@ -268,9 +299,11 @@ export default function Home() {
           <p>
             Actual pitch: {actualPitch.velocity} mph {actualPitch.pitchType}
           </p>
+
           <p>Outcome: {actualPitch.outcome}</p>
           <p>Location score: {score.locationScore}</p>
           <p>Pitch type score: {score.pitchTypeScore}</p>
+
           <p className="text-3xl font-bold mt-2">Total: {score.totalScore}</p>
 
           <button
