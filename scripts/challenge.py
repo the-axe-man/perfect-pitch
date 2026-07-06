@@ -21,6 +21,17 @@ PITCH_NAME_MAP = {
     "ST": "Sweeper",
 }
 
+OUTCOME_MAP = {
+    "swinging_strike": "Swinging Strike",
+    "called_strike": "Called Strike",
+    "ball": "Ball",
+    "foul": "Foul",
+    "hit_into_play": "In Play",
+    "blocked_ball": "Blocked Ball",
+    "foul_tip": "Foul Tip",
+    "hit_by_pitch": "Hit By Pitch",
+}
+
 
 def clean(value, fallback=""):
     if pd.isna(value):
@@ -54,17 +65,39 @@ def slugify(text):
         .replace(",", "")
         .replace("'", "")
     )
+
+
+PLAYER_NAME_CACHE = {}
+
+
 def get_player_name(mlbam_id):
+    player_id = safe_int(mlbam_id)
+
+    if player_id in PLAYER_NAME_CACHE:
+        return PLAYER_NAME_CACHE[player_id]
+
     try:
-        player = playerid_reverse_lookup([int(mlbam_id)], key_type="mlbam")
+        player = playerid_reverse_lookup([player_id], key_type="mlbam")
+
         if len(player):
-            first = player.iloc[0]["name_first"]
-            last = player.iloc[0]["name_last"]
-            return f"{first} {last}"
+            first = player.iloc[0]["name_first"].title()
+            last = player.iloc[0]["name_last"].title()
+            name = f"{first} {last}"
+            PLAYER_NAME_CACHE[player_id] = name
+            return name
+
     except Exception:
         pass
 
-    return f"Batter {mlbam_id}"
+    fallback = f"Player {player_id}"
+    PLAYER_NAME_CACHE[player_id] = fallback
+    return fallback
+
+
+def format_outcome(description):
+    description = clean(description)
+    return OUTCOME_MAP.get(description, description.replace("_", " ").title())
+
 
 print("Downloading Statcast data...")
 df = statcast(START_DATE, END_DATE)
@@ -84,14 +117,20 @@ for (game_pk, at_bat_number), group in df.groupby(["game_pk", "at_bat_number"]):
         continue
 
     first = group.iloc[0]
+    batter_id = safe_int(first.get("batter"))
+    batter_name = get_player_name(batter_id)
+    pitcher_name = clean(first.get("player_name"), "Unknown Pitcher")
+
     groups.append(
         {
             "game_pk": game_pk,
             "at_bat_number": at_bat_number,
             "pitch_count": len(group),
-            "pitcher": clean(first.get("player_name"), "Unknown Pitcher"),
-            "batter_id": safe_int(first.get("batter")),
+            "pitcher": pitcher_name,
+            "batter_id": batter_id,
+            "batter": batter_name,
             "inning": f"{clean(first.get('inning_topbot'))} {clean(first.get('inning'))}",
+            "outs": safe_int(first.get("outs_when_up")),
             "away_team": clean(first.get("away_team")),
             "home_team": clean(first.get("home_team")),
             "group": group,
@@ -105,20 +144,27 @@ print("\nAvailable at-bats:\n")
 
 for index, item in enumerate(groups, start=1):
     print(
-        f"{index}. {item['away_team']} @ {item['home_team']} · "
-        f"{item['inning']} · Batter {item['batter_id']} · "
+        f"{index}. {item['batter']} vs {item['pitcher']} · "
+        f"{item['away_team']} @ {item['home_team']} · "
+        f"{item['inning']} · {item['outs']} outs · "
         f"{item['pitch_count']} pitches"
     )
 
 choice = input("\nChoose an at-bat number: ").strip()
 choice_index = int(choice) - 1
 
+if choice_index < 0 or choice_index >= len(groups):
+    raise SystemExit("Invalid at-bat selection.")
+
 selected = groups[choice_index]
 ab = selected["group"]
 
 challenge = {
     "id": f"{selected['game_pk']}-{selected['at_bat_number']}",
-    "title": f"{selected['pitcher']} vs {get_player_name(selected['batter_id'])}",
+    "title": f"{selected['batter']} vs {selected['pitcher']}",
+    "date": START_DATE,
+    "description": f"{selected['inning']} • {selected['away_team']} at {selected['home_team']}",
+    "difficulty": "Hard",
     "gamePk": safe_int(selected["game_pk"]),
     "atBatNumber": safe_int(selected["at_bat_number"]),
     "pitches": [],
@@ -130,6 +176,7 @@ for _, row in ab.iterrows():
 
     balls = safe_int(row.get("balls"))
     strikes = safe_int(row.get("strikes"))
+    batter_id = safe_int(row.get("batter"))
 
     challenge["pitches"].append(
         {
@@ -142,10 +189,10 @@ for _, row in ab.iterrows():
             "homeTeam": clean(row.get("home_team")),
             "homeScore": safe_int(row.get("home_score")),
             "pitcher": clean(row.get("player_name"), "Unknown Pitcher"),
-            "batter": get_player_name(row.get("batter")),
+            "batter": get_player_name(batter_id),
             "pitchType": pitch_name,
             "velocity": round(safe_float(row.get("release_speed"))),
-            "outcome": clean(row.get("description")),
+            "outcome": format_outcome(row.get("description")),
             "plateX": safe_float(row.get("plate_x")),
             "plateZ": safe_float(row.get("plate_z")),
         }

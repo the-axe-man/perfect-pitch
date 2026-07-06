@@ -29,7 +29,7 @@ end
 # Unset irrelevant variables.
 deactivate nondestructive
 
-set -gx VIRTUAL_ENV "/Users/mbpro/pitch-predictor/.venv"
+set -gx VIRTUAL_ENV "/Users/mbpro/Documents/Personal/Misc/Perfect Pitch/perfect-pitch/.venv"
 
 set -gx _OLD_VIRTUAL_PATH $PATH
 set -gx PATH "$VIRTUAL_ENV/bin" $PATH

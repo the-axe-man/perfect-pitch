@@ -1,4 +1,6 @@
-#!/Users/mbpro/pitch-predictor/.venv/bin/python3
+#!/bin/sh
+'''exec' "/Users/mbpro/Documents/Personal/Misc/Perfect Pitch/perfect-pitch/.venv/bin/python3" "$0" "$@"
+' '''
 # -*- coding: utf-8 -*-
 import re
 import sys
