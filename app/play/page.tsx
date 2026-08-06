@@ -171,53 +171,53 @@ function PlayGame() {
 
   if (gameComplete) {
     return (
-      <main className="min-h-screen bg-[#1e2023] text-[#f4f4f2] flex flex-col items-center p-6">
+      <main className="min-h-screen bg-[#202225] text-[#f5f5f1] flex flex-col items-center p-6">
         <section className="w-full max-w-md text-center">
           <Link
             href="/"
-            className="text-3xl font-bold hover:text-yellow-400 transition-colors"
+            className="text-3xl font-black tracking-[-0.03em] transition-colors hover:text-[#dcff00]"
           >
             Perfect Pitch
           </Link>
-          <p className="mt-2 text-[#9ca0a7]">{challenge.title}</p>
-          <div className="mt-6 rounded-3xl border border-[#464b52] bg-[#2b2f33] p-6">
-            <p className="text-xs font-bold uppercase tracking-[0.25em] text-[#73777d]">
+          <p className="mt-2 text-[#a0a4aa]">{challenge.title}</p>
+          <div className="mt-6 rounded-[28px] border border-[#444a50] bg-[#292c30] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+            <p className="text-xs font-bold uppercase tracking-[0.25em] text-[#747a81]">
               Final Score
             </p>
-            <p className="mt-3 text-7xl font-black text-yellow-400">
+            <p className="mt-3 text-7xl font-black text-[#dcff00]">
               {finalScore}
             </p>
             <div className="mt-6 grid grid-cols-2 gap-3">
-              <div className="rounded-2xl bg-[#1e2023] p-4">
-                <p className="text-xs uppercase tracking-wide text-[#73777d]">
+              <div className="rounded-2xl bg-[#202225] p-4">
+                <p className="text-xs uppercase tracking-wide text-[#747a81]">
                   Location
                 </p>
                 <p className="mt-1 text-3xl font-bold">{averageLocation}</p>
               </div>
-              <div className="rounded-2xl bg-[#1e2023] p-4">
-                <p className="text-xs uppercase tracking-wide text-[#73777d]">
+              <div className="rounded-2xl bg-[#202225] p-4">
+                <p className="text-xs uppercase tracking-wide text-[#747a81]">
                   Pitch Type
                 </p>
                 <p className="mt-1 text-3xl font-bold">{pitchTypeAccuracy}%</p>
               </div>
             </div>
           </div>
-          <section className="mt-5 rounded-3xl border border-[#464b52] bg-[#2b2f33] p-5 text-left">
+          <section className="mt-5 rounded-[24px] border border-[#444a50] bg-[#292c30] p-5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
             <h2 className="text-xl font-bold">Achievements</h2>
-            <div className="mt-3 space-y-2 text-[#e3e4e2]">
+            <div className="mt-3 space-y-2 text-[#e7e8e5]">
               {perfectPitchTypes && <p>🧠 Ball Knower</p>}
               {sniper && <p>🎯 Sniper</p>}
               {painter && <p>🖌️ Painter</p>}
               {lockedIn && <p>🔥 Locked In</p>}
               {!perfectPitchTypes && !sniper && !painter && !lockedIn && (
-                <p className="text-[#9ca0a7]">No achievements this time.</p>
+                <p className="text-[#a0a4aa]">No achievements this time.</p>
               )}
             </div>
           </section>
-          <section className="mt-5 rounded-3xl border border-[#464b52] bg-[#2b2f33] p-5">
+          <section className="mt-5 rounded-[24px] border border-[#444a50] bg-[#292c30] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
             <button
               onClick={() => setShowPitchDetails(!showPitchDetails)}
-              className="w-full text-left font-bold text-[#e3e4e2]"
+              className="flex w-full items-center justify-between text-left font-bold text-[#e7e8e5] transition hover:text-[#dcff00]"
             >
               {showPitchDetails ? "Hide Pitch Details ↑" : "Show Pitch Details ↓"}
             </button>
@@ -226,15 +226,15 @@ function PlayGame() {
                 {results.map((result) => (
                   <div
                     key={result.pitchNumber}
-                    className="border-t border-[#3a3f45] pt-3"
+                    className="border-t border-[#3c4147] pt-3"
                   >
                     <p className="font-bold">Pitch {result.pitchNumber}</p>
-                    <p className="text-[#c5c8cc]">
+                    <p className="text-[#c9ccd0]">
                       Guessed {result.guessedPitchType} · Actual{" "}
                       {result.actualPitchType}
                     </p>
-                    <p className="text-[#9ca0a7]">{result.outcome}</p>
-                    <p className="text-yellow-400">
+                    <p className="text-[#a0a4aa]">{result.outcome}</p>
+                    <p className="text-[#dcff00]">
                       {result.locationScore} location + {result.pitchTypeScore} type ={" "}
                       {result.totalScore}
                     </p>
@@ -245,7 +245,7 @@ function PlayGame() {
           </section>
           <Link
             href="/"
-            className="mt-6 inline-block rounded bg-yellow-400 px-8 py-3 font-bold text-[#17191b] hover:bg-yellow-300 transition-colors"
+            className="mt-6 inline-block rounded-2xl bg-[#dcff00] px-8 py-3.5 font-black text-[#17191b] shadow-[0_4px_0_#91a800] transition hover:bg-[#c8e900] active:translate-y-[3px] active:shadow-[0_1px_0_#91a800]"
           >
             Back to Challenges
           </Link>
@@ -255,29 +255,29 @@ function PlayGame() {
   }
 
   return (
-    <main className="min-h-screen bg-[#1e2023] text-[#f4f4f2] flex flex-col items-center p-4">
+    <main className="min-h-screen bg-[#202225] text-[#f5f5f1] flex flex-col items-center p-4">
       <Link
         href="/"
-        className="text-3xl font-bold hover:text-yellow-400 transition-colors"
+        className="text-3xl font-black tracking-[-0.03em] transition-colors hover:text-[#dcff00]"
       >
         Perfect Pitch
       </Link>
 
       <section className="mt-3 mb-4 text-center">
-        <p className="text-sm text-[#c5c8cc]">
-          <span className="font-bold text-[#f4f4f2]">
+        <p className="text-sm text-[#c9ccd0]">
+          <span className="font-bold text-[#f5f5f1]">
             {actualPitch.awayTeam} {actualPitch.awayScore} ·{" "}
             {actualPitch.homeTeam} {actualPitch.homeScore}
           </span>
-          <span className="mx-2 text-[#5f646b]">|</span>
+          <span className="mx-2 text-[#596068]">|</span>
           {actualPitch.inning}
-          <span className="mx-2 text-[#5f646b]">|</span>
+          <span className="mx-2 text-[#596068]">|</span>
           {actualPitch.outs} Out
-          <span className="mx-2 text-[#5f646b]">|</span>
+          <span className="mx-2 text-[#596068]">|</span>
           {actualPitch.count} Count
         </p>
 
-        <p className="text-sm text-[#9ca0a7] mt-1">
+        <p className="text-sm text-[#a0a4aa] mt-1">
           {actualPitch.batter} vs {actualPitch.pitcher}
         </p>
       </section>
@@ -296,7 +296,7 @@ function PlayGame() {
                   setPitchType(type);
                   setStage("location");
                 }}
-                className="px-4 py-3 rounded border bg-[#2b2f33] text-[#f4f4f2] border-[#464b52] text-lg"
+                className="rounded-2xl border border-[#444a50] bg-[#292c30] px-4 py-4 text-lg font-semibold text-[#f5f5f1] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition hover:border-[#596068] hover:bg-[#33373c] active:scale-[0.98]"
               >
                 {type}
               </button>
@@ -309,9 +309,9 @@ function PlayGame() {
         <section className="flex flex-col items-center">
           {!revealed && (
             <div className="mb-2 flex items-center gap-4">
-              <p className="text-sm text-[#c5c8cc]">
+              <p className="text-sm text-[#c9ccd0]">
                 Selected:{" "}
-                <span className="font-bold text-[#f4f4f2]">{pitchType}</span>
+                <span className="font-bold text-[#f5f5f1]">{pitchType}</span>
               </p>
 
               <button
@@ -320,7 +320,7 @@ function PlayGame() {
                   if (!(guess && pitchType)) return;
                   lockInGuess();
                 }}
-                className={`px-5 py-2 rounded bg-yellow-400 text-[#17191b] font-bold ${
+                className={`rounded-xl bg-[#dcff00] px-5 py-2.5 font-black text-[#17191b] shadow-[0_3px_0_#91a800] transition active:translate-y-[2px] active:shadow-[0_1px_0_#91a800] ${
                   !(guess && pitchType) ? "opacity-40 cursor-not-allowed" : ""
                 }`}
               >
@@ -333,15 +333,15 @@ function PlayGame() {
             onClick={handleClick}
             className="relative h-[420px] w-[430px] cursor-crosshair overflow-visible"
           >
-            <div className="absolute left-[90px] top-[55px] h-[255px] w-[250px] border-2 border-orange-500">
-              <div className="absolute left-1/3 top-0 h-full border-l border-dashed border-[#464b52]" />
-              <div className="absolute left-2/3 top-0 h-full border-l border-dashed border-[#464b52]" />
-              <div className="absolute top-1/3 left-0 w-full border-t border-dashed border-[#464b52]" />
-              <div className="absolute top-2/3 left-0 w-full border-t border-dashed border-[#464b52]" />
+            <div className="absolute left-[90px] top-[55px] h-[255px] w-[250px] border-2 border-[#777e86]">
+              <div className="absolute left-1/3 top-0 h-full border-l border-dashed border-[#444a50]" />
+              <div className="absolute left-2/3 top-0 h-full border-l border-dashed border-[#444a50]" />
+              <div className="absolute top-1/3 left-0 w-full border-t border-dashed border-[#444a50]" />
+              <div className="absolute top-2/3 left-0 w-full border-t border-dashed border-[#444a50]" />
             </div>
 
             <div
-              className="absolute left-1/2 bottom-0 h-7 w-[250px] -translate-x-1/2 bg-[#363b40]/80"
+              className="absolute left-1/2 bottom-0 h-7 w-[250px] -translate-x-1/2 bg-[#33373c]/80"
               style={{
                 clipPath:
                   view === "catcher"
@@ -352,7 +352,7 @@ function PlayGame() {
 
             {displayedGuess && (
               <div
-                className="absolute h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-slate-300 bg-transparent"
+                className="absolute h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-[#dce1e6] bg-transparent"
                 style={{ left: displayedGuess.x, top: displayedGuess.y }}
               />
             )}
@@ -366,7 +366,7 @@ function PlayGame() {
                       y1={displayedGuess.y}
                       x2={actualX}
                       y2={actualY}
-                      stroke="rgb(203 213 225)"
+                      stroke="#dce1e6"
                       strokeWidth="3"
                       strokeDasharray="8 8"
                     />
@@ -374,7 +374,7 @@ function PlayGame() {
                 )}
 
                 <div
-                  className="absolute h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full bg-orange-500"
+                  className="absolute h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#202225] bg-[#dcff00]"
                   style={{ left: actualX, top: actualY }}
                 />
               </>
@@ -383,17 +383,17 @@ function PlayGame() {
 
           {!revealed && (
             <div className="mt-2 flex flex-col items-center gap-1">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#73777d]">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#747a81]">
                 Perspective
               </p>
 
-              <div className="flex rounded-full border border-[#464b52] bg-[#1e2023] p-1">
+              <div className="flex rounded-full border border-[#444a50] bg-[#202225] p-1">
                 <button
                   onClick={() => setView("catcher")}
                   className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
                     view === "catcher"
-                      ? "bg-slate-700 text-[#f4f4f2]"
-                      : "text-[#73777d] hover:text-[#c5c8cc]"
+                      ? "bg-[#4a5360] text-[#f5f5f1]"
+                      : "text-[#747a81] hover:text-[#c9ccd0]"
                   }`}
                 >
                   Catcher
@@ -403,8 +403,8 @@ function PlayGame() {
                   onClick={() => setView("pitcher")}
                   className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
                     view === "pitcher"
-                      ? "bg-slate-700 text-[#f4f4f2]"
-                      : "text-[#73777d] hover:text-[#c5c8cc]"
+                      ? "bg-[#4a5360] text-[#f5f5f1]"
+                      : "text-[#747a81] hover:text-[#c9ccd0]"
                   }`}
                 >
                   Pitcher
@@ -429,7 +429,7 @@ function PlayGame() {
 
           <button
             onClick={nextPitch}
-            className="mt-3 px-8 py-3 rounded bg-yellow-400 text-[#17191b] font-bold"
+            className="mt-3 rounded-2xl bg-[#dcff00] px-8 py-3.5 font-black text-[#17191b] shadow-[0_4px_0_#91a800] transition hover:bg-[#c8e900] active:translate-y-[3px] active:shadow-[0_1px_0_#91a800]"
           >
             {pitchIndex === samplePitches.length - 1
               ? "See Results"
