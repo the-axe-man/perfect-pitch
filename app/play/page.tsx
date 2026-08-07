@@ -307,27 +307,36 @@ function PlayGame() {
 
       {stage === "location" && (
         <section className="flex flex-col items-center">
-          {!revealed && (
-            <div className="mb-2 flex items-center gap-4">
-              <p className="text-sm text-[#c9ccd0]">
-                Selected:{" "}
-                <span className="font-bold text-[#f5f5f1]">{pitchType}</span>
-              </p>
+          <div className="mb-2 flex h-[52px] items-center justify-center">
+            {!revealed ? (
+              <div className="flex items-center gap-4">
+                <p className="text-sm text-[#c9ccd0]">
+                  Selected:{" "}
+                  <span className="font-bold text-[#f5f5f1]">{pitchType}</span>
+                </p>
 
-              <button
-                aria-disabled={!(guess && pitchType)}
-                onClick={() => {
-                  if (!(guess && pitchType)) return;
-                  lockInGuess();
-                }}
-                className={`rounded-xl bg-[#dcff00] px-5 py-2.5 font-black text-[#17191b] shadow-[0_3px_0_#91a800] transition active:translate-y-[2px] active:shadow-[0_1px_0_#91a800] ${
-                  !(guess && pitchType) ? "opacity-40 cursor-not-allowed" : ""
-                }`}
-              >
-                Lock In
-              </button>
-            </div>
-          )}
+                <button
+                  aria-disabled={!(guess && pitchType)}
+                  onClick={() => {
+                    if (!(guess && pitchType)) return;
+                    lockInGuess();
+                  }}
+                  className={`rounded-xl bg-[#dcff00] px-5 py-2.5 font-black text-[#17191b] shadow-[0_3px_0_#91a800] transition active:translate-y-[2px] active:shadow-[0_1px_0_#91a800] ${
+                    !(guess && pitchType) ? "cursor-not-allowed opacity-40" : ""
+                  }`}
+                >
+                  Lock In
+                </button>
+              </div>
+            ) : (
+              <div className="text-center">
+                <p className="text-sm font-semibold text-[#f5f5f1]">
+                  {actualPitch.velocity} mph {actualPitch.pitchType}
+                </p>
+                <p className="text-sm text-[#a0a4aa]">{actualPitch.outcome}</p>
+              </div>
+            )}
+          </div>
 
           <div
             onClick={handleClick}
@@ -336,12 +345,12 @@ function PlayGame() {
             <div className="absolute left-[90px] top-[55px] h-[255px] w-[250px] border-2 border-[#777e86]">
               <div className="absolute left-1/3 top-0 h-full border-l border-dashed border-[#444a50]" />
               <div className="absolute left-2/3 top-0 h-full border-l border-dashed border-[#444a50]" />
-              <div className="absolute top-1/3 left-0 w-full border-t border-dashed border-[#444a50]" />
-              <div className="absolute top-2/3 left-0 w-full border-t border-dashed border-[#444a50]" />
+              <div className="absolute left-0 top-1/3 w-full border-t border-dashed border-[#444a50]" />
+              <div className="absolute left-0 top-2/3 w-full border-t border-dashed border-[#444a50]" />
             </div>
 
             <div
-              className="absolute left-1/2 bottom-0 h-7 w-[250px] -translate-x-1/2 bg-[#33373c]/80"
+              className="absolute bottom-0 left-1/2 h-7 w-[250px] -translate-x-1/2 bg-[#33373c]/80"
               style={{
                 clipPath:
                   view === "catcher"
@@ -381,62 +390,80 @@ function PlayGame() {
             )}
           </div>
 
-          {!revealed && (
-            <div className="mt-2 flex flex-col items-center gap-1">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#747a81]">
-                Perspective
-              </p>
+          <div className="mt-2 flex h-[50px] flex-col items-center gap-1">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#747a81]">
+              Perspective
+            </p>
 
-              <div className="flex rounded-full border border-[#444a50] bg-[#202225] p-1">
-                <button
-                  onClick={() => setView("catcher")}
-                  className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
-                    view === "catcher"
-                      ? "bg-[#4a5360] text-[#f5f5f1]"
-                      : "text-[#747a81] hover:text-[#c9ccd0]"
-                  }`}
-                >
-                  Catcher
-                </button>
+            <div className="flex rounded-full border border-[#444a50] bg-[#202225] p-1">
+              <button
+                onClick={() => setView("catcher")}
+                className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                  view === "catcher"
+                    ? "bg-[#4a5360] text-[#f5f5f1]"
+                    : "text-[#747a81] hover:text-[#c9ccd0]"
+                }`}
+              >
+                Catcher
+              </button>
+
+              <button
+                onClick={() => setView("pitcher")}
+                className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                  view === "pitcher"
+                    ? "bg-[#4a5360] text-[#f5f5f1]"
+                    : "text-[#747a81] hover:text-[#c9ccd0]"
+                }`}
+              >
+                Pitcher
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-3 h-[112px]">
+            {revealed && score && (
+              <div className="flex flex-col items-center">
+                <div className="flex items-center gap-5 text-sm">
+                  <p className="text-[#a0a4aa]">
+                    Location{" "}
+                    <span className="font-bold text-[#f5f5f1]">
+                      {score.locationScore}
+                    </span>
+                  </p>
+
+                  <span className="text-[#596068]">|</span>
+
+                  <p className="text-[#a0a4aa]">
+                    Pitch Type{" "}
+                    <span className="font-bold text-[#f5f5f1]">
+                      {score.pitchTypeScore}
+                    </span>
+                  </p>
+
+                  <span className="text-[#596068]">|</span>
+
+                  <p className="text-[#a0a4aa]">
+                    Total{" "}
+                    <span className="font-black text-[#dcff00]">
+                      {score.totalScore}
+                    </span>
+                  </p>
+                </div>
 
                 <button
-                  onClick={() => setView("pitcher")}
-                  className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
-                    view === "pitcher"
-                      ? "bg-[#4a5360] text-[#f5f5f1]"
-                      : "text-[#747a81] hover:text-[#c9ccd0]"
-                  }`}
+                  onClick={nextPitch}
+                  className="mt-3 rounded-2xl bg-[#dcff00] px-8 py-3 font-black text-[#17191b] shadow-[0_4px_0_#91a800] transition hover:bg-[#c8e900] active:translate-y-[3px] active:shadow-[0_1px_0_#91a800]"
                 >
-                  Pitcher
+                  {pitchIndex === samplePitches.length - 1
+                    ? "See Results"
+                    : "Next Pitch"}
                 </button>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </section>
       )}
 
-      {revealed && score && (
-        <section className="mt-3 text-center">
-          <p>
-            Actual pitch: {actualPitch.velocity} mph {actualPitch.pitchType}
-          </p>
-
-          <p>Outcome: {actualPitch.outcome}</p>
-          <p>Location score: {score.locationScore}</p>
-          <p>Pitch type score: {score.pitchTypeScore}</p>
-
-          <p className="text-2xl font-bold mt-1">Total: {score.totalScore}</p>
-
-          <button
-            onClick={nextPitch}
-            className="mt-3 rounded-2xl bg-[#dcff00] px-8 py-3.5 font-black text-[#17191b] shadow-[0_4px_0_#91a800] transition hover:bg-[#c8e900] active:translate-y-[3px] active:shadow-[0_1px_0_#91a800]"
-          >
-            {pitchIndex === samplePitches.length - 1
-              ? "See Results"
-              : "Next Pitch"}
-          </button>
-        </section>
-      )}
     </main>
   );
 }
