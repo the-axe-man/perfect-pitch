@@ -174,16 +174,16 @@ function PlayGame() {
         <section className="w-full max-w-md text-center">
           <Link
             href="/"
-            className="text-3xl font-black tracking-[-0.03em] transition-colors hover:text-[#dcff00]"
+            className="text-3xl font-medium tracking-[-0.03em] transition-colors hover:text-[#dcff00]"
           >
             Perfect Pitch
           </Link>
           <p className="mt-2 text-[#a0a4aa]">{challenge.title}</p>
           <div className="mt-6 rounded-[28px] border border-[#444a50] bg-[#292c30] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-            <p className="text-xs font-bold uppercase tracking-[0.25em] text-[#747a81]">
+            <p className="text-xs font-medium uppercase tracking-[0.25em] text-[#747a81]">
               Final Score
             </p>
-            <p className="mt-3 text-7xl font-black text-[#dcff00]">
+            <p className="mt-3 text-7xl font-medium text-[#dcff00]">
               {finalScore}
             </p>
             <div className="mt-6 grid grid-cols-2 gap-3">
@@ -191,22 +191,22 @@ function PlayGame() {
                 <p className="text-xs uppercase tracking-wide text-[#747a81]">
                   Location
                 </p>
-                <p className="mt-1 text-3xl font-bold">{locationTotal}</p>
+                <p className="mt-1 text-3xl font-medium">{locationTotal}</p>
               </div>
               <div className="rounded-2xl bg-[#202225] p-4">
                 <p className="text-xs uppercase tracking-wide text-[#747a81]">
                   Pitch Type
                 </p>
-                <p className="mt-1 text-3xl font-bold">{pitchTypeTotal}</p>
+                <p className="mt-1 text-3xl font-medium">{pitchTypeTotal}</p>
               </div>
             </div>
           </div>
           <section className="mt-5 rounded-[24px] border border-[#444a50] bg-[#292c30] p-5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-            <h2 className="text-xl font-bold">Achievements</h2>
+            <h2 className="text-xl font-medium">Achievements</h2>
             <div className="mt-4 space-y-4 text-[#e7e8e5]">
               {perfectPitchTypes && (
                 <div>
-                  <p className="font-bold">🧠 Ball Knower</p>
+                  <p className="font-medium">🧠 Ball Knower</p>
                   <p className="mt-1 text-sm text-[#a0a4aa]">
                     Correctly predicted every pitch type in the at-bat.
                   </p>
@@ -215,7 +215,7 @@ function PlayGame() {
 
               {sniper && (
                 <div>
-                  <p className="font-bold">🎯 Sniper</p>
+                  <p className="font-medium">🎯 Sniper</p>
                   <p className="mt-1 text-sm text-[#a0a4aa]">
                     Scored 80+ on location for every pitch.
                   </p>
@@ -224,7 +224,7 @@ function PlayGame() {
 
               {painter && (
                 <div>
-                  <p className="font-bold">🖌️ Painter</p>
+                  <p className="font-medium">🖌️ Painter</p>
                   <p className="mt-1 text-sm text-[#a0a4aa]">
                     Scored 95+ on location on at least one pitch.
                   </p>
@@ -233,7 +233,7 @@ function PlayGame() {
 
               {lockedIn && (
                 <div>
-                  <p className="font-bold">🔥 Locked In</p>
+                  <p className="font-medium">🔥 Locked In</p>
                   <p className="mt-1 text-sm text-[#a0a4aa]">
                     Scored 500+ total points in the at-bat.
                   </p>
@@ -248,7 +248,7 @@ function PlayGame() {
           <section className="mt-5 rounded-[24px] border border-[#444a50] bg-[#292c30] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
             <button
               onClick={() => setShowPitchDetails(!showPitchDetails)}
-              className="flex w-full items-center justify-between text-left font-bold text-[#e7e8e5] transition hover:text-[#dcff00]"
+              className="flex w-full items-center justify-between text-left font-medium text-[#e7e8e5] transition hover:text-[#dcff00]"
             >
               {showPitchDetails ? "Hide Pitch Details ↑" : "Show Pitch Details ↓"}
             </button>
@@ -259,7 +259,7 @@ function PlayGame() {
                     key={result.pitchNumber}
                     className="border-t border-[#3c4147] pt-3"
                   >
-                    <p className="font-bold">Pitch {result.pitchNumber}</p>
+                    <p className="font-medium">Pitch {result.pitchNumber}</p>
                     <p className="text-[#c9ccd0]">
                       Guessed {result.guessedPitchType} · Actual{" "}
                       {result.actualPitchType}
@@ -276,7 +276,7 @@ function PlayGame() {
           </section>
           <Link
             href="/"
-            className="mt-6 inline-block rounded-2xl bg-[#dcff00] px-8 py-3.5 font-black text-[#17191b] shadow-[0_4px_0_#91a800] transition hover:bg-[#c8e900] active:translate-y-[3px] active:shadow-[0_1px_0_#91a800]"
+            className="mt-6 inline-block rounded-2xl bg-[#dcff00] px-8 py-3.5 font-medium text-[#17191b] shadow-[0_4px_0_#91a800] transition hover:bg-[#c8e900] active:translate-y-[3px] active:shadow-[0_1px_0_#91a800]"
           >
             Back to Challenges
           </Link>
@@ -289,14 +289,14 @@ function PlayGame() {
     <main className="min-h-screen bg-[#202225] text-[#f5f5f1] flex flex-col items-center p-4">
       <Link
         href="/"
-        className="text-3xl font-black tracking-[-0.03em] transition-colors hover:text-[#dcff00]"
+        className="text-3xl font-medium tracking-[-0.03em] transition-colors hover:text-[#dcff00]"
       >
         Perfect Pitch
       </Link>
 
       <section className="mt-3 mb-4 text-center">
         <p className="text-sm text-[#c9ccd0]">
-          <span className="font-bold text-[#f5f5f1]">
+          <span className="font-medium text-[#f5f5f1]">
             {actualPitch.awayTeam} {actualPitch.awayScore} ·{" "}
             {actualPitch.homeTeam} {actualPitch.homeScore}
           </span>
@@ -315,7 +315,7 @@ function PlayGame() {
 
       {!revealed && stage === "type" && (
         <section className="w-full max-w-md text-center">
-          <h2 className="mt-4 text-2xl font-bold">
+          <h2 className="mt-4 text-2xl font-medium">
             What pitch is coming next?
           </h2>
 
@@ -327,7 +327,7 @@ function PlayGame() {
                   setPitchType(type);
                   setStage("location");
                 }}
-                className="rounded-2xl border border-[#444a50] bg-[#292c30] px-4 py-4 text-lg font-semibold text-[#f5f5f1] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition hover:border-[#596068] hover:bg-[#33373c] active:scale-[0.98]"
+                className="rounded-2xl border border-[#444a50] bg-[#292c30] px-4 py-4 text-lg font-medium text-[#f5f5f1] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition hover:border-[#596068] hover:bg-[#33373c] active:scale-[0.98]"
               >
                 {type}
               </button>
@@ -344,7 +344,7 @@ function PlayGame() {
               <div className="flex items-center gap-3 text-sm">
                 <p className="text-[#c9ccd0]">
                   Selected:{" "}
-                  <span className="font-bold text-[#f5f5f1]">{pitchType}</span>
+                  <span className="font-medium text-[#f5f5f1]">{pitchType}</span>
                 </p>
                 <button
                   onClick={() => {
@@ -352,14 +352,14 @@ function PlayGame() {
                     setGuess(null);
                     setStage("type");
                   }}
-                  className="rounded-lg border border-[#444a50] bg-[#292c30] px-2.5 py-1.5 text-xs font-bold text-[#c9ccd0] transition hover:border-[#596068] hover:text-[#f5f5f1]"
+                  className="rounded-lg border border-[#444a50] bg-[#292c30] px-2.5 py-1.5 text-xs font-medium text-[#c9ccd0] transition hover:border-[#596068] hover:text-[#f5f5f1]"
                 >
                   Back
                 </button>
               </div>
             ) : (
               <div className="text-center">
-                <p className="text-sm font-semibold text-[#f5f5f1]">
+                <p className="text-sm font-medium text-[#f5f5f1]">
                   {actualPitch.velocity} mph {actualPitch.pitchType}
                 </p>
                 <p className="text-sm text-[#a0a4aa]">{actualPitch.outcome}</p>
@@ -421,14 +421,14 @@ function PlayGame() {
 
           {/* Compact, single-line perspective control. */}
           <div className="mt-2 flex h-[34px] items-center justify-center gap-2">
-            <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[#747a81]">
+            <p className="text-[9px] font-medium uppercase tracking-[0.16em] text-[#747a81]">
               Perspective
             </p>
 
             <div className="flex rounded-full border border-[#444a50] bg-[#202225] p-0.5">
               <button
                 onClick={() => setView("catcher")}
-                className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition ${
+                className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition ${
                   view === "catcher"
                     ? "bg-[#4a5360] text-[#f5f5f1]"
                     : "text-[#747a81] hover:text-[#c9ccd0]"
@@ -439,7 +439,7 @@ function PlayGame() {
 
               <button
                 onClick={() => setView("pitcher")}
-                className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition ${
+                className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition ${
                   view === "pitcher"
                     ? "bg-[#4a5360] text-[#f5f5f1]"
                     : "text-[#747a81] hover:text-[#c9ccd0]"
@@ -459,7 +459,7 @@ function PlayGame() {
                   if (!(guess && pitchType)) return;
                   lockInGuess();
                 }}
-                className={`rounded-2xl bg-[#dcff00] px-8 py-3 font-black text-[#17191b] shadow-[0_4px_0_#91a800] transition active:translate-y-[3px] active:shadow-[0_1px_0_#91a800] ${
+                className={`rounded-2xl bg-[#dcff00] px-8 py-3 font-medium text-[#17191b] shadow-[0_4px_0_#91a800] transition active:translate-y-[3px] active:shadow-[0_1px_0_#91a800] ${
                   !(guess && pitchType) ? "cursor-not-allowed opacity-40" : "hover:bg-[#c8e900]"
                 }`}
               >
@@ -471,7 +471,7 @@ function PlayGame() {
                   <div className="flex items-center gap-5 text-sm">
                     <p className="text-[#a0a4aa]">
                       Location{" "}
-                      <span className="font-bold text-[#f5f5f1]">
+                      <span className="font-medium text-[#f5f5f1]">
                         {score.locationScore}
                       </span>
                     </p>
@@ -480,7 +480,7 @@ function PlayGame() {
 
                     <p className="text-[#a0a4aa]">
                       Pitch Type{" "}
-                      <span className="font-bold text-[#f5f5f1]">
+                      <span className="font-medium text-[#f5f5f1]">
                         {score.pitchTypeScore}
                       </span>
                     </p>
@@ -489,7 +489,7 @@ function PlayGame() {
 
                     <p className="text-[#a0a4aa]">
                       Total{" "}
-                      <span className="font-black text-[#dcff00]">
+                      <span className="font-medium text-[#dcff00]">
                         {score.totalScore}
                       </span>
                     </p>
@@ -497,7 +497,7 @@ function PlayGame() {
 
                   <button
                     onClick={nextPitch}
-                    className="mt-3 rounded-2xl bg-[#dcff00] px-8 py-3 font-black text-[#17191b] shadow-[0_4px_0_#91a800] transition hover:bg-[#c8e900] active:translate-y-[3px] active:shadow-[0_1px_0_#91a800]"
+                    className="mt-3 rounded-2xl bg-[#dcff00] px-8 py-3 font-medium text-[#17191b] shadow-[0_4px_0_#91a800] transition hover:bg-[#c8e900] active:translate-y-[3px] active:shadow-[0_1px_0_#91a800]"
                   >
                     {pitchIndex === samplePitches.length - 1
                       ? "See Results"
