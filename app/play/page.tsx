@@ -307,25 +307,23 @@ function PlayGame() {
 
       {stage === "location" && (
         <section className="flex flex-col items-center">
+          {/* Keep this row a fixed height so the field never jumps between guess/reveal states. */}
           <div className="mb-2 flex h-[52px] items-center justify-center">
             {!revealed ? (
-              <div className="flex items-center gap-4">
-                <p className="text-sm text-[#c9ccd0]">
+              <div className="flex items-center gap-3 text-sm">
+                <p className="text-[#c9ccd0]">
                   Selected:{" "}
                   <span className="font-bold text-[#f5f5f1]">{pitchType}</span>
                 </p>
-
                 <button
-                  aria-disabled={!(guess && pitchType)}
                   onClick={() => {
-                    if (!(guess && pitchType)) return;
-                    lockInGuess();
+                    setPitchType("");
+                    setGuess(null);
+                    setStage("type");
                   }}
-                  className={`rounded-xl bg-[#dcff00] px-5 py-2.5 font-black text-[#17191b] shadow-[0_3px_0_#91a800] transition active:translate-y-[2px] active:shadow-[0_1px_0_#91a800] ${
-                    !(guess && pitchType) ? "cursor-not-allowed opacity-40" : ""
-                  }`}
+                  className="rounded-lg border border-[#444a50] bg-[#292c30] px-2.5 py-1.5 text-xs font-bold text-[#c9ccd0] transition hover:border-[#596068] hover:text-[#f5f5f1]"
                 >
-                  Lock In
+                  Back
                 </button>
               </div>
             ) : (
@@ -390,15 +388,16 @@ function PlayGame() {
             )}
           </div>
 
-          <div className="mt-2 flex h-[50px] flex-col items-center gap-1">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#747a81]">
+          {/* Compact, single-line perspective control. */}
+          <div className="mt-2 flex h-[34px] items-center justify-center gap-2">
+            <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[#747a81]">
               Perspective
             </p>
 
-            <div className="flex rounded-full border border-[#444a50] bg-[#202225] p-1">
+            <div className="flex rounded-full border border-[#444a50] bg-[#202225] p-0.5">
               <button
                 onClick={() => setView("catcher")}
-                className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition ${
                   view === "catcher"
                     ? "bg-[#4a5360] text-[#f5f5f1]"
                     : "text-[#747a81] hover:text-[#c9ccd0]"
@@ -409,7 +408,7 @@ function PlayGame() {
 
               <button
                 onClick={() => setView("pitcher")}
-                className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition ${
                   view === "pitcher"
                     ? "bg-[#4a5360] text-[#f5f5f1]"
                     : "text-[#747a81] hover:text-[#c9ccd0]"
@@ -420,45 +419,61 @@ function PlayGame() {
             </div>
           </div>
 
-          <div className="mt-3 h-[112px]">
-            {revealed && score && (
-              <div className="flex flex-col items-center">
-                <div className="flex items-center gap-5 text-sm">
-                  <p className="text-[#a0a4aa]">
-                    Location{" "}
-                    <span className="font-bold text-[#f5f5f1]">
-                      {score.locationScore}
-                    </span>
-                  </p>
+          {/* This fixed action slot is used before AND after reveal, so nothing moves. */}
+          <div className="mt-3 flex h-[112px] flex-col items-center">
+            {!revealed ? (
+              <button
+                aria-disabled={!(guess && pitchType)}
+                onClick={() => {
+                  if (!(guess && pitchType)) return;
+                  lockInGuess();
+                }}
+                className={`rounded-2xl bg-[#dcff00] px-8 py-3 font-black text-[#17191b] shadow-[0_4px_0_#91a800] transition active:translate-y-[3px] active:shadow-[0_1px_0_#91a800] ${
+                  !(guess && pitchType) ? "cursor-not-allowed opacity-40" : "hover:bg-[#c8e900]"
+                }`}
+              >
+                Lock In
+              </button>
+            ) : (
+              score && (
+                <div className="flex flex-col items-center">
+                  <div className="flex items-center gap-5 text-sm">
+                    <p className="text-[#a0a4aa]">
+                      Location{" "}
+                      <span className="font-bold text-[#f5f5f1]">
+                        {score.locationScore}
+                      </span>
+                    </p>
 
-                  <span className="text-[#596068]">|</span>
+                    <span className="text-[#596068]">|</span>
 
-                  <p className="text-[#a0a4aa]">
-                    Pitch Type{" "}
-                    <span className="font-bold text-[#f5f5f1]">
-                      {score.pitchTypeScore}
-                    </span>
-                  </p>
+                    <p className="text-[#a0a4aa]">
+                      Pitch Type{" "}
+                      <span className="font-bold text-[#f5f5f1]">
+                        {score.pitchTypeScore}
+                      </span>
+                    </p>
 
-                  <span className="text-[#596068]">|</span>
+                    <span className="text-[#596068]">|</span>
 
-                  <p className="text-[#a0a4aa]">
-                    Total{" "}
-                    <span className="font-black text-[#dcff00]">
-                      {score.totalScore}
-                    </span>
-                  </p>
+                    <p className="text-[#a0a4aa]">
+                      Total{" "}
+                      <span className="font-black text-[#dcff00]">
+                        {score.totalScore}
+                      </span>
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={nextPitch}
+                    className="mt-3 rounded-2xl bg-[#dcff00] px-8 py-3 font-black text-[#17191b] shadow-[0_4px_0_#91a800] transition hover:bg-[#c8e900] active:translate-y-[3px] active:shadow-[0_1px_0_#91a800]"
+                  >
+                    {pitchIndex === samplePitches.length - 1
+                      ? "See Results"
+                      : "Next Pitch"}
+                  </button>
                 </div>
-
-                <button
-                  onClick={nextPitch}
-                  className="mt-3 rounded-2xl bg-[#dcff00] px-8 py-3 font-black text-[#17191b] shadow-[0_4px_0_#91a800] transition hover:bg-[#c8e900] active:translate-y-[3px] active:shadow-[0_1px_0_#91a800]"
-                >
-                  {pitchIndex === samplePitches.length - 1
-                    ? "See Results"
-                    : "Next Pitch"}
-                </button>
-              </div>
+              )
             )}
           </div>
         </section>
