@@ -148,14 +148,10 @@ function PlayGame() {
     0
   );
 
-  const pitchTypeAccuracy =
-    results.length > 0
-      ? Math.round(
-          (results.filter((result) => result.pitchTypeScore === 100).length /
-            results.length) *
-            100
-        )
-      : 0;
+  const pitchTypeTotal = results.reduce(
+    (sum, result) => sum + result.pitchTypeScore,
+    0
+  );
 
   const averageLocation =
     results.length > 0 ? Math.round(locationTotal / results.length) : 0;
@@ -192,13 +188,13 @@ function PlayGame() {
                 <p className="text-xs uppercase tracking-wide text-[#747a81]">
                   Location
                 </p>
-                <p className="mt-1 text-3xl font-bold">{averageLocation}</p>
+                <p className="mt-1 text-3xl font-bold">{locationTotal}</p>
               </div>
               <div className="rounded-2xl bg-[#202225] p-4">
                 <p className="text-xs uppercase tracking-wide text-[#747a81]">
                   Pitch Type
                 </p>
-                <p className="mt-1 text-3xl font-bold">{pitchTypeAccuracy}%</p>
+                <p className="mt-1 text-3xl font-bold">{pitchTypeTotal}</p>
               </div>
             </div>
           </div>
