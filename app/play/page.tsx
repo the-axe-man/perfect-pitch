@@ -162,7 +162,10 @@ function PlayGame() {
   const sniper =
     results.length > 0 && results.every((result) => result.locationScore >= 80);
 
-  const painter = results.length > 0 && averageLocation >= 85;
+  const painter =
+    results.length > 0 &&
+    results.some((result) => result.locationScore >= 95);
+
   const lockedIn = finalScore >= 500;
 
   if (gameComplete) {
@@ -200,11 +203,43 @@ function PlayGame() {
           </div>
           <section className="mt-5 rounded-[24px] border border-[#444a50] bg-[#292c30] p-5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
             <h2 className="text-xl font-bold">Achievements</h2>
-            <div className="mt-3 space-y-2 text-[#e7e8e5]">
-              {perfectPitchTypes && <p>🧠 Ball Knower</p>}
-              {sniper && <p>🎯 Sniper</p>}
-              {painter && <p>🖌️ Painter</p>}
-              {lockedIn && <p>🔥 Locked In</p>}
+            <div className="mt-4 space-y-4 text-[#e7e8e5]">
+              {perfectPitchTypes && (
+                <div>
+                  <p className="font-bold">🧠 Ball Knower</p>
+                  <p className="mt-1 text-sm text-[#a0a4aa]">
+                    Correctly predicted every pitch type in the at-bat.
+                  </p>
+                </div>
+              )}
+
+              {sniper && (
+                <div>
+                  <p className="font-bold">🎯 Sniper</p>
+                  <p className="mt-1 text-sm text-[#a0a4aa]">
+                    Scored 80+ on location for every pitch.
+                  </p>
+                </div>
+              )}
+
+              {painter && (
+                <div>
+                  <p className="font-bold">🖌️ Painter</p>
+                  <p className="mt-1 text-sm text-[#a0a4aa]">
+                    Scored 95+ on location on at least one pitch.
+                  </p>
+                </div>
+              )}
+
+              {lockedIn && (
+                <div>
+                  <p className="font-bold">🔥 Locked In</p>
+                  <p className="mt-1 text-sm text-[#a0a4aa]">
+                    Scored 500+ total points in the at-bat.
+                  </p>
+                </div>
+              )}
+
               {!perfectPitchTypes && !sniper && !painter && !lockedIn && (
                 <p className="text-[#a0a4aa]">No achievements this time.</p>
               )}
@@ -478,3 +513,4 @@ function PlayGame() {
     </main>
   );
 }
+
