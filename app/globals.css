@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap");
 @import "tailwindcss";
 
 :root {
@@ -19,7 +20,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-inter);
+  --font-sans: "Inter", sans-serif;
 }
 
 * {
@@ -28,15 +29,23 @@
 
 html {
   background: var(--background);
-  font-family: var(--font-inter), sans-serif;
+  font-family: "Inter", sans-serif;
 }
 
 body {
   margin: 0;
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-inter), sans-serif;
+  font-family: "Inter", sans-serif;
   text-rendering: optimizeLegibility;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  font-family: inherit;
 }
 
 button,
@@ -52,3 +61,4 @@ button {
   background: var(--accent);
   color: var(--accent-foreground);
 }
+
