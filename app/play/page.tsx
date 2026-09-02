@@ -153,9 +153,6 @@ function PlayGame() {
     0
   );
 
-  const averageLocation =
-    results.length > 0 ? Math.round(locationTotal / results.length) : 0;
-
   const perfectPitchTypes =
     results.length > 0 && results.every((result) => result.pitchTypeScore === 100);
 
@@ -513,4 +510,3 @@ function PlayGame() {
     </main>
   );
 }
-

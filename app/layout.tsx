@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Perfect Pitch",
-  description: "Predict every pitch of a real MLB at-bat.",
+  description: "Predict the next pitch type and location from real MLB games.",
 };
 
 export default function RootLayout({

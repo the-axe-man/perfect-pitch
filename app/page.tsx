@@ -4,17 +4,36 @@ import { challenges } from "@/lib/challenges";
 export default function Home() {
   return (
     <main className="min-h-screen bg-[#202225] px-5 py-8 text-[#f5f5f1] sm:px-8 sm:py-12">
-      <section className="mx-auto max-w-4xl">
-        <div className="mb-10 sm:mb-14">
-          <p className="mb-3 text-xs font-medium uppercase tracking-[0.24em] text-[#747a81]">
-            MLB pitch prediction game
+      <section className="mx-auto max-w-5xl">
+        <div className="mb-10 border-b border-[#3c4147] pb-10 sm:mb-12 sm:pb-12">
+          <p className="mb-3 text-xs font-medium uppercase tracking-[0.16em] text-[#747a81]">
+            MLB pitch prediction
           </p>
-          <h1 className="text-5xl font-medium tracking-[-0.04em] sm:text-7xl">
-            Perfect Pitch
-          </h1>
-          <p className="mt-4 max-w-xl text-lg text-[#a0a4aa] sm:text-xl">
-            Predict every pitch of a real MLB at-bat.
+          <h1 className="text-5xl font-medium sm:text-7xl">Perfect Pitch</h1>
+          <p className="mt-4 max-w-2xl text-lg text-[#a0a4aa] sm:text-xl">
+            Lock in the next pitch type and location while a real MLB game is on.
           </p>
+          <div className="mt-8 flex flex-wrap items-center gap-3">
+            <Link
+              href="/live"
+              className="rounded-2xl bg-[#dcff00] px-6 py-3.5 font-medium text-[#17191b] shadow-[0_4px_0_#91a800] transition hover:bg-[#c8e900] active:translate-y-[3px] active:shadow-[0_1px_0_#91a800]"
+            >
+              Play Live
+            </Link>
+            <a
+              href="#classic"
+              className="rounded-2xl border border-[#444a50] bg-[#292c30] px-6 py-3.5 font-medium text-[#c9ccd0] transition hover:border-[#596068] hover:text-[#f5f5f1]"
+            >
+              Classic Challenges
+            </a>
+          </div>
+        </div>
+
+        <div id="classic" className="mb-5">
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-[#747a81]">
+            Classic challenges
+          </p>
+          <h2 className="mt-2 text-3xl font-medium">Saved at-bats</h2>
         </div>
 
         <div className="space-y-5">
@@ -33,16 +52,16 @@ export default function Home() {
                       Challenge {String(index + 1).padStart(2, "0")}
                     </span>
                     <span className="rounded-full bg-[#dcff00] px-4 py-2 text-sm font-medium text-[#17191b] shadow-[0_3px_0_#91a800] transition group-hover:bg-[#c8e900] group-active:translate-y-[2px] group-active:shadow-[0_1px_0_#91a800]">
-                      Play →
+                      Play
                     </span>
                   </div>
 
                   <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-end sm:gap-6">
-                    <h2 className="text-3xl font-medium leading-none tracking-[-0.03em] sm:text-5xl">
+                    <h2 className="text-3xl font-medium leading-none sm:text-5xl">
                       {batter}
                     </h2>
                     <span className="text-lg font-medium text-[#747a81] sm:pb-1">vs</span>
-                    <h2 className="text-3xl font-medium leading-none tracking-[-0.03em] sm:text-5xl sm:text-right">
+                    <h2 className="text-3xl font-medium leading-none sm:text-5xl sm:text-right">
                       {pitcher}
                     </h2>
                   </div>
@@ -59,4 +78,3 @@ export default function Home() {
     </main>
   );
 }
-
