@@ -3,18 +3,19 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  PitchTarget,
+  normalizeBatterSide,
+  plateCoordinatesToPoint,
+  type PitchPoint,
+  type PitchView,
+} from "@/components/PitchTarget";
+import {
   LIVE_PITCH_TYPES,
   type LiveGameResponse,
   type LivePitch,
   type LivePollResponse,
 } from "@/lib/mlb-live";
 
-const FIELD_WIDTH = 430;
-const FIELD_HEIGHT = 420;
-const ZONE_LEFT = 90;
-const ZONE_TOP = 55;
-const ZONE_WIDTH = 250;
-const ZONE_HEIGHT = 255;
 const REVEAL_DELAY_STORAGE_KEY = "perfect-pitch-reveal-delay";
 const MAX_REVEAL_DELAY_SECONDS = 90;
 const CALIBRATION_SAFETY_BUFFER_SECONDS = 2;
@@ -23,14 +24,9 @@ const CALIBRATION_REACTION_GRACE_SECONDS = 2;
 const PITCH_OPTIONS = [...LIVE_PITCH_TYPES, "Other"];
 const REVEAL_DELAY_OPTIONS = [0, 15, 30, 45, 60, 90];
 
-type Point = {
-  x: number;
-  y: number;
-};
-
 type PendingGuess = {
   pitchType: string;
-  point: Point;
+  point: PitchPoint;
   baselineSequence: number;
 };
 
@@ -38,7 +34,7 @@ type ScoredPitch = {
   id: string;
   pitch: LivePitch;
   guessedPitchType: string;
-  point: Point;
+  point: PitchPoint;
   locationScore: number;
   pitchTypeScore: number;
   totalScore: number;
@@ -65,44 +61,22 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-function plateToPoint(pitch: LivePitch): Point | null {
-  if (pitch.plateX === null || pitch.plateZ === null) {
-    return null;
-  }
-
-  return {
-    x: clamp(ZONE_LEFT + ((pitch.plateX + 2) / 4) * ZONE_WIDTH, 10, FIELD_WIDTH - 10),
-    y: clamp(
-      ZONE_TOP + ZONE_HEIGHT - (pitch.plateZ / 5) * ZONE_HEIGHT,
-      10,
-      FIELD_HEIGHT - 10
-    ),
-  };
-}
-
-function toDisplayPoint(point: Point, view: "catcher" | "pitcher") {
-  return view === "pitcher" ? { x: FIELD_WIDTH - point.x, y: point.y } : point;
-}
-
-function pointStyle(point: Point) {
-  return {
-    left: `${(point.x / FIELD_WIDTH) * 100}%`,
-    top: `${(point.y / FIELD_HEIGHT) * 100}%`,
-  };
-}
-
 function normalizePitchType(value: string) {
   return LIVE_PITCH_TYPES.some((type) => type === value) ? value : "Other";
 }
 
 function scorePitch(guess: PendingGuess, pitch: LivePitch): ScoredPitch {
-  const actualPoint = plateToPoint(pitch);
+  const actualPoint = plateCoordinatesToPoint(
+    pitch.plateX,
+    pitch.plateZ,
+    pitch.batterSide
+  );
   const distance = actualPoint
     ? Math.sqrt(
         Math.pow(guess.point.x - actualPoint.x, 2) +
           Math.pow(guess.point.y - actualPoint.y, 2)
       )
-    : FIELD_WIDTH;
+    : 760;
 
   const locationScore = Math.max(0, Math.round(100 - distance / 2));
   const pitchTypeScore =
@@ -327,115 +301,13 @@ function MiniScoreboard({ feed }: { feed: LiveGameResponse }) {
   );
 }
 
-function TargetField({
-  enabled,
-  guessPoint,
-  lastResult,
-  pendingGuess,
-  view,
-  onPick,
-}: {
-  enabled: boolean;
-  guessPoint: Point | null;
-  lastResult: ScoredPitch | null;
-  pendingGuess: PendingGuess | null;
-  view: "catcher" | "pitcher";
-  onPick: (point: Point) => void;
-}) {
-  const lockedOrDraftPoint = pendingGuess?.point ?? guessPoint;
-  const resultGuess = lastResult?.point ?? null;
-  const resultActual = lastResult ? plateToPoint(lastResult.pitch) : null;
-  const shownGuess = lockedOrDraftPoint ?? resultGuess;
-  const displayGuess = shownGuess ? toDisplayPoint(shownGuess, view) : null;
-  const displayActual = resultActual ? toDisplayPoint(resultActual, view) : null;
-
-  function handlePointer(event: React.PointerEvent<HTMLDivElement>) {
-    if (!enabled || pendingGuess) {
-      return;
-    }
-
-    const rect = event.currentTarget.getBoundingClientRect();
-    const rawX = ((event.clientX - rect.left) / rect.width) * FIELD_WIDTH;
-    const rawY = ((event.clientY - rect.top) / rect.height) * FIELD_HEIGHT;
-    const x = view === "pitcher" ? FIELD_WIDTH - rawX : rawX;
-
-    onPick({
-      x: clamp(x, 0, FIELD_WIDTH),
-      y: clamp(rawY, 0, FIELD_HEIGHT),
-    });
-  }
-
-  return (
-    <div
-      aria-label="Pitch location target"
-      onPointerDown={handlePointer}
-      className={`relative aspect-[430/420] w-[min(430px,calc(100vw-2rem))] overflow-visible ${
-        enabled && !pendingGuess ? "cursor-crosshair" : "cursor-not-allowed"
-      }`}
-    >
-      <div
-        className="absolute border-2 border-[#777e86]"
-        style={{
-          left: `${(ZONE_LEFT / FIELD_WIDTH) * 100}%`,
-          top: `${(ZONE_TOP / FIELD_HEIGHT) * 100}%`,
-          width: `${(ZONE_WIDTH / FIELD_WIDTH) * 100}%`,
-          height: `${(ZONE_HEIGHT / FIELD_HEIGHT) * 100}%`,
-        }}
-      >
-        <div className="absolute left-1/3 top-0 h-full border-l border-dashed border-[#444a50]" />
-        <div className="absolute left-2/3 top-0 h-full border-l border-dashed border-[#444a50]" />
-        <div className="absolute left-0 top-1/3 w-full border-t border-dashed border-[#444a50]" />
-        <div className="absolute left-0 top-2/3 w-full border-t border-dashed border-[#444a50]" />
-      </div>
-
-      <div
-        className="absolute bottom-0 left-1/2 h-[6.7%] w-[58.2%] -translate-x-1/2 bg-[#33373c]/80"
-        style={{
-          clipPath:
-            view === "catcher"
-              ? "polygon(8% 0, 92% 0, 100% 55%, 50% 100%, 0 55%)"
-              : "polygon(50% 0, 92% 55%, 100% 100%, 0 100%, 8% 55%)",
-        }}
-      />
-
-      {displayGuess && displayActual && (
-        <svg className="pointer-events-none absolute inset-0 h-full w-full">
-          <line
-            x1={`${(displayGuess.x / FIELD_WIDTH) * 100}%`}
-            y1={`${(displayGuess.y / FIELD_HEIGHT) * 100}%`}
-            x2={`${(displayActual.x / FIELD_WIDTH) * 100}%`}
-            y2={`${(displayActual.y / FIELD_HEIGHT) * 100}%`}
-            stroke="#dce1e6"
-            strokeDasharray="8 8"
-            strokeWidth="3"
-          />
-        </svg>
-      )}
-
-      {displayGuess && (
-        <div
-          className="absolute h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-[#dce1e6] bg-transparent"
-          style={pointStyle(displayGuess)}
-        />
-      )}
-
-      {displayActual && (
-        <div
-          className="absolute h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#202225] bg-[#dcff00]"
-          style={pointStyle(displayActual)}
-        />
-      )}
-    </div>
-  );
-}
-
 export default function LiveGameClient({ gamePk }: { gamePk: string }) {
   const [pitchType, setPitchType] = useState("");
-  const [guessPoint, setGuessPoint] = useState<Point | null>(null);
+  const [guessPoint, setGuessPoint] = useState<PitchPoint | null>(null);
   const [pendingGuess, setPendingGuess] = useState<PendingGuess | null>(null);
   const [lastResult, setLastResult] = useState<ScoredPitch | null>(null);
   const [results, setResults] = useState<ScoredPitch[]>([]);
-  const [view, setView] = useState<"catcher" | "pitcher">("catcher");
+  const [view, setView] = useState<PitchView>("catcher");
   const [revealDelaySeconds, setRevealDelaySeconds] = useState(
     getInitialRevealDelay
   );
@@ -524,6 +396,18 @@ export default function LiveGameClient({ gamePk }: { gamePk: string }) {
   );
 
   const canPlay = Boolean(feed?.status.isLive && feed.currentAtBat);
+  const targetBatterSide = normalizeBatterSide(
+    lastResult?.pitch.batterSide ??
+      feed?.currentAtBat?.batterSide ??
+      feed?.latestPitch?.batterSide
+  );
+  const actualPoint = lastResult
+    ? plateCoordinatesToPoint(
+        lastResult.pitch.plateX,
+        lastResult.pitch.plateZ,
+        lastResult.pitch.batterSide
+      )
+    : null;
   const totalScore = useMemo(
     () => results.reduce((sum, result) => sum + result.totalScore, 0),
     [results]
@@ -716,53 +600,95 @@ export default function LiveGameClient({ gamePk }: { gamePk: string }) {
                   </div>
                 </div>
 
-                <div className="mt-5 grid gap-2 sm:grid-cols-3">
-                  {PITCH_OPTIONS.map((option) => (
-                    <button
-                      key={option}
-                      disabled={!canPlay || Boolean(pendingGuess)}
-                      onClick={() => setPitchType(option)}
-                      className={`min-h-12 rounded-2xl border px-3 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
-                        pitchType === option
-                          ? "border-[#dcff00] bg-[#dcff00] text-[#17191b] shadow-[0_3px_0_#91a800]"
-                          : "border-[#444a50] bg-[#202225] text-[#f5f5f1] hover:border-[#596068] hover:bg-[#33373c]"
-                      }`}
-                    >
-                      {option}
-                    </button>
-                  ))}
-                </div>
+                {!pitchType && !pendingGuess && (
+                  <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    {PITCH_OPTIONS.map((option) => (
+                      <button
+                        key={option}
+                        disabled={!canPlay}
+                        onClick={() => {
+                          setPitchType(option);
+                          setGuessPoint(null);
+                          setLastResult(null);
+                        }}
+                        className="min-h-12 rounded-2xl border border-[#444a50] bg-[#202225] px-3 py-2 text-sm font-medium text-[#f5f5f1] transition hover:border-[#596068] hover:bg-[#33373c] disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
-                <div className="mt-5 flex flex-col items-center">
-                  <TargetField
-                    enabled={canPlay}
-                    guessPoint={guessPoint}
-                    lastResult={lastResult}
-                    pendingGuess={pendingGuess}
-                    view={view}
-                    onPick={setGuessPoint}
-                  />
-                </div>
+                {(pitchType || pendingGuess || lastResult) && (
+                  <div className="mt-5">
+                    <div className="mb-2 flex min-h-[48px] items-center justify-center text-center">
+                      {pendingGuess ? (
+                        <p className="text-sm font-medium text-[#dcff00]">
+                          Locked: {pendingGuess.pitchType}
+                        </p>
+                      ) : pitchType ? (
+                        <div className="flex items-center gap-3 text-sm">
+                          <p className="text-[#c9ccd0]">
+                            Selected:{" "}
+                            <span className="font-medium text-[#f5f5f1]">
+                              {pitchType}
+                            </span>
+                          </p>
+                          <button
+                            onClick={() => {
+                              setPitchType("");
+                              setGuessPoint(null);
+                            }}
+                            className="rounded-lg border border-[#444a50] bg-[#202225] px-2.5 py-1.5 text-xs font-medium text-[#c9ccd0] transition hover:border-[#596068] hover:text-[#f5f5f1]"
+                          >
+                            Back
+                          </button>
+                        </div>
+                      ) : lastResult ? (
+                        <div>
+                          <p className="text-sm font-medium text-[#f5f5f1]">
+                            {speedLabel(lastResult.pitch.velocity)}{" "}
+                            {lastResult.pitch.pitchType}
+                          </p>
+                          <p className="text-sm text-[#a0a4aa]">
+                            {lastResult.pitch.outcome}
+                          </p>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="flex w-full flex-col items-center">
+                      <PitchTarget
+                        enabled={canPlay && Boolean(pitchType) && !pendingGuess}
+                        batterSide={targetBatterSide}
+                        guessPoint={guessPoint}
+                        actualPoint={actualPoint}
+                        lockedPoint={pendingGuess?.point ?? null}
+                        view={view}
+                        onPick={setGuessPoint}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 <div className="mt-4 flex min-h-[80px] flex-col items-center justify-center gap-3 text-center">
                   {pendingGuess ? (
                     <>
-                      <p className="text-sm font-medium text-[#dcff00]">
-                        Locked: {pendingGuess.pitchType}
-                      </p>
                       <p className="text-sm text-[#a0a4aa]">
                         Waiting on pitch {pendingGuess.baselineSequence + 1}
                       </p>
                     </>
                   ) : (
                     <>
-                      <button
-                        disabled={!canPlay || !pitchType || !guessPoint}
-                        onClick={lockGuess}
-                        className="rounded-2xl bg-[#dcff00] px-8 py-3 font-medium text-[#17191b] shadow-[0_4px_0_#91a800] transition hover:bg-[#c8e900] active:translate-y-[3px] active:shadow-[0_1px_0_#91a800] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-[#dcff00]"
-                      >
-                        Lock In
-                      </button>
+                      {pitchType && (
+                        <button
+                          disabled={!canPlay || !guessPoint}
+                          onClick={lockGuess}
+                          className="rounded-2xl bg-[#dcff00] px-8 py-3 font-medium text-[#17191b] shadow-[0_4px_0_#91a800] transition hover:bg-[#c8e900] active:translate-y-[3px] active:shadow-[0_1px_0_#91a800] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-[#dcff00]"
+                        >
+                          Lock In
+                        </button>
+                      )}
                       {!canPlay && (
                         <p className="text-sm text-[#a0a4aa]">
                           {feed.status.isFinal

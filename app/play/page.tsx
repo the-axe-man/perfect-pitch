@@ -3,6 +3,13 @@
 import Link from "next/link";
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import {
+  PitchTarget,
+  normalizeBatterSide,
+  plateCoordinatesToPoint,
+  type PitchPoint,
+  type PitchView,
+} from "@/components/PitchTarget";
 import { challenges } from "@/lib/challenges";
 
 const pitchTypes = [
@@ -45,61 +52,32 @@ function PlayGame() {
   const samplePitches = challenge.pitches;
 
   const [pitchIndex, setPitchIndex] = useState(0);
-  const [guess, setGuess] = useState<{ x: number; y: number } | null>(null);
+  const [guess, setGuess] = useState<PitchPoint | null>(null);
   const [pitchType, setPitchType] = useState("");
   const [stage, setStage] = useState<"type" | "location">("type");
   const [revealed, setRevealed] = useState(false);
   const [results, setResults] = useState<PitchResult[]>([]);
   const [gameComplete, setGameComplete] = useState(false);
-  const [view, setView] = useState<"catcher" | "pitcher">("catcher");
+  const [view, setView] = useState<PitchView>("catcher");
   const [showPitchDetails, setShowPitchDetails] = useState(false);
 
   const actualPitch = samplePitches[pitchIndex];
-
-  const canvasWidth = 430;
-  const zoneLeft = 90;
-  const zoneTop = 55;
-  const zoneWidth = 250;
-  const zoneHeight = 255;
-
-  function plateXToScreen(plateX: number) {
-    return Math.round(zoneLeft + ((plateX + 2) / 4) * zoneWidth);
-  }
-
-  function plateZToScreen(plateZ: number) {
-    return Math.round(zoneTop + zoneHeight - (plateZ / 5) * zoneHeight);
-  }
-
-  const actualCatcherX = plateXToScreen(actualPitch.plateX);
-  const actualY = plateZToScreen(actualPitch.plateZ);
-
-  const actualX =
-    view === "pitcher" ? canvasWidth - actualCatcherX : actualCatcherX;
-
-  const displayedGuess =
-    guess && view === "pitcher"
-      ? { x: canvasWidth - guess.x, y: guess.y }
-      : guess;
-
-  function handleClick(e: React.MouseEvent<HTMLDivElement>) {
-    if (revealed) return;
-
-    const rect = e.currentTarget.getBoundingClientRect();
-    const clickedX = e.clientX - rect.left;
-    const clickedY = e.clientY - rect.top;
-
-    setGuess({
-      x: view === "pitcher" ? canvasWidth - clickedX : clickedX,
-      y: clickedY,
-    });
-  }
+  const batterSide = normalizeBatterSide(challenge.batterSide);
+  const actualPoint = plateCoordinatesToPoint(
+    actualPitch.plateX,
+    actualPitch.plateZ,
+    batterSide
+  );
 
   function getScore() {
     if (!guess) return null;
 
-    const distance = Math.sqrt(
-      Math.pow(guess.x - actualCatcherX, 2) + Math.pow(guess.y - actualY, 2)
-    );
+    const distance = actualPoint
+      ? Math.sqrt(
+          Math.pow(guess.x - actualPoint.x, 2) +
+            Math.pow(guess.y - actualPoint.y, 2)
+        )
+      : 760;
 
     const locationScore = Math.max(0, Math.round(100 - distance / 2));
     const pitchTypeScore = pitchType === actualPitch.pitchType ? 100 : 0;
@@ -334,7 +312,7 @@ function PlayGame() {
       )}
 
       {stage === "location" && (
-        <section className="flex flex-col items-center">
+        <section className="flex w-full flex-col items-center">
           {/* Keep this row a fixed height so the field never jumps between guess/reveal states. */}
           <div className="mb-2 flex h-[52px] items-center justify-center">
             {!revealed ? (
@@ -364,57 +342,15 @@ function PlayGame() {
             )}
           </div>
 
-          <div
-            onClick={handleClick}
-            className="relative h-[420px] w-[430px] cursor-crosshair overflow-visible"
-          >
-            <div className="absolute left-[90px] top-[55px] h-[255px] w-[250px] border-2 border-[#777e86]">
-              <div className="absolute left-1/3 top-0 h-full border-l border-dashed border-[#444a50]" />
-              <div className="absolute left-2/3 top-0 h-full border-l border-dashed border-[#444a50]" />
-              <div className="absolute left-0 top-1/3 w-full border-t border-dashed border-[#444a50]" />
-              <div className="absolute left-0 top-2/3 w-full border-t border-dashed border-[#444a50]" />
-            </div>
-
-            <div
-              className="absolute bottom-0 left-1/2 h-7 w-[250px] -translate-x-1/2 bg-[#33373c]/80"
-              style={{
-                clipPath:
-                  view === "catcher"
-                    ? "polygon(8% 0, 92% 0, 100% 55%, 50% 100%, 0 55%)"
-                    : "polygon(50% 0, 92% 55%, 100% 100%, 0 100%, 8% 55%)",
-              }}
-            />
-
-            {displayedGuess && (
-              <div
-                className="absolute h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-[#dce1e6] bg-transparent"
-                style={{ left: displayedGuess.x, top: displayedGuess.y }}
-              />
-            )}
-
-            {revealed && (
-              <>
-                {displayedGuess && (
-                  <svg className="pointer-events-none absolute inset-0 h-full w-full">
-                    <line
-                      x1={displayedGuess.x}
-                      y1={displayedGuess.y}
-                      x2={actualX}
-                      y2={actualY}
-                      stroke="#dce1e6"
-                      strokeWidth="3"
-                      strokeDasharray="8 8"
-                    />
-                  </svg>
-                )}
-
-                <div
-                  className="absolute h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#202225] bg-[#dcff00]"
-                  style={{ left: actualX, top: actualY }}
-                />
-              </>
-            )}
-          </div>
+          <PitchTarget
+            enabled={!revealed}
+            batterSide={batterSide}
+            guessPoint={guess}
+            actualPoint={revealed ? actualPoint : null}
+            lockedPoint={null}
+            view={view}
+            onPick={setGuess}
+          />
 
           {/* Compact, single-line perspective control. */}
           <div className="mt-2 flex h-[34px] items-center justify-center gap-2">

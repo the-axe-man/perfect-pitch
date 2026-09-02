@@ -49,6 +49,7 @@ export type LivePitch = {
   atBatIndex: number;
   eventIndex: number;
   batter: string;
+  batterSide: BatterSide;
   pitcher: string;
   pitchType: string;
   pitchCode: string;
@@ -64,6 +65,7 @@ export type LivePitch = {
 export type CurrentAtBat = {
   atBatIndex: number;
   batter: string;
+  batterSide: BatterSide;
   pitcher: string;
   description: string;
   balls: number | null;
@@ -95,6 +97,8 @@ export type LivePollResponse = {
   checkedAt: string;
   feed: LiveGameResponse | null;
 };
+
+export type BatterSide = "L" | "R" | "S" | "U";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -155,6 +159,14 @@ function normalizeStatus(status: UnknownRecord): GameStatus {
       lowerDetail.includes("scheduled") ||
       lowerDetail.includes("pre-game"),
   };
+}
+
+function normalizeBatterSide(value: string): BatterSide {
+  if (value === "L" || value === "R" || value === "S") {
+    return value;
+  }
+
+  return "U";
 }
 
 function normalizeTeam(teamSide: UnknownRecord, lineSide: UnknownRecord): TeamSummary {
@@ -218,6 +230,7 @@ function normalizeCurrentAtBat(play: UnknownRecord): CurrentAtBat | null {
   }
 
   const matchup = pickRecord(play, "matchup");
+  const batSide = pickRecord(matchup, "batSide");
   const result = pickRecord(play, "result");
   const count = pickRecord(play, "count");
   const about = pickRecord(play, "about");
@@ -225,6 +238,7 @@ function normalizeCurrentAtBat(play: UnknownRecord): CurrentAtBat | null {
   return {
     atBatIndex: pickCount(about, "atBatIndex") ?? 0,
     batter: pickString(pickRecord(matchup, "batter"), "fullName", "Current batter"),
+    batterSide: normalizeBatterSide(pickString(batSide, "code")),
     pitcher: pickString(pickRecord(matchup, "pitcher"), "fullName", "Current pitcher"),
     description: pickString(result, "description", pickString(result, "event")),
     balls: pickCount(count, "balls"),
@@ -245,6 +259,7 @@ function normalizePitch(
   const coordinates = pickRecord(pitchData, "coordinates");
   const pitchType = pickRecord(details, "type");
   const matchup = pickRecord(play, "matchup");
+  const batSide = pickRecord(matchup, "batSide");
   const count = pickRecord(event, "count");
 
   return {
@@ -253,6 +268,7 @@ function normalizePitch(
     atBatIndex,
     eventIndex,
     batter: pickString(pickRecord(matchup, "batter"), "fullName", "Batter"),
+    batterSide: normalizeBatterSide(pickString(batSide, "code")),
     pitcher: pickString(pickRecord(matchup, "pitcher"), "fullName", "Pitcher"),
     pitchType: pickString(pitchType, "description", "Unknown"),
     pitchCode: pickString(pitchType, "code"),

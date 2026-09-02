@@ -32,6 +32,7 @@ const LIVE_FIELDS = [
   "eventType",
   "description",
   "matchup",
+  "batSide",
   "batter",
   "fullName",
   "pitcher",
