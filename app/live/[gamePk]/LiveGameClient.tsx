@@ -3,125 +3,50 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  PitchTarget,
-  normalizeBatterSide,
-  plateCoordinatesToPoint,
-  type PitchPoint,
-  type PitchView,
-} from "@/components/PitchTarget";
-import {
-  LIVE_PITCH_TYPES,
-  type LiveGameResponse,
-  type LivePitch,
-  type LivePollResponse,
+  PLATE_OUTCOME_OPTIONS,
+  getPlateOutcomeOption,
+  scorePlatePrediction,
+  timingBonusForPitchCount,
+  type PlateOutcomeId,
+} from "@/lib/plate-outcomes";
+import type {
+  BaseState,
+  CurrentAtBat,
+  LiveGameResponse,
+  LivePlateAppearance,
+  LivePollResponse,
+  TeamSummary,
 } from "@/lib/mlb-live";
 
-const REVEAL_DELAY_STORAGE_KEY = "perfect-pitch-reveal-delay";
-const MAX_REVEAL_DELAY_SECONDS = 90;
-const CALIBRATION_SAFETY_BUFFER_SECONDS = 2;
-const CALIBRATION_REACTION_GRACE_SECONDS = 2;
+const POLL_INTERVAL_MS = 2000;
 
-const PITCH_OPTIONS = [...LIVE_PITCH_TYPES, "Other"];
-const REVEAL_DELAY_OPTIONS = [0, 15, 30, 45, 60, 90];
-
-type PendingGuess = {
-  pitchType: string;
-  point: PitchPoint;
-  baselineSequence: number;
+type PendingPrediction = {
+  atBatIndex: number;
+  batter: string;
+  pitcher: string;
+  predictedOutcome: PlateOutcomeId;
+  pitchCountAtLock: number;
+  lockedAt: string;
 };
 
-type ScoredPitch = {
+type ScoredPrediction = {
   id: string;
-  pitch: LivePitch;
-  guessedPitchType: string;
-  point: PitchPoint;
-  locationScore: number;
-  pitchTypeScore: number;
+  appearance: LivePlateAppearance;
+  predictedOutcome: PlateOutcomeId;
+  pitchCountAtLock: number;
+  baseScore: number;
+  timingBonus: number;
   totalScore: number;
+  lockedAt: string;
 };
 
-type Calibration =
-  | { status: "idle" }
-  | { status: "waiting"; baselinePitchCount: number }
-  | {
-      status: "ready";
-      baselinePitchCount: number;
-      pitchSequence: number;
-      receivedAtMs: number;
-      timecode: string;
-    }
-  | {
-      status: "set";
-      delaySeconds: number;
-      measuredSeconds: number;
-      pitchSequence: number;
-    };
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function normalizePitchType(value: string) {
-  return LIVE_PITCH_TYPES.some((type) => type === value) ? value : "Other";
-}
-
-function scorePitch(guess: PendingGuess, pitch: LivePitch): ScoredPitch {
-  const actualPoint = plateCoordinatesToPoint(
-    pitch.plateX,
-    pitch.plateZ,
-    {
-      top: pitch.strikeZoneTop,
-      bottom: pitch.strikeZoneBottom,
-    }
-  );
-  const distance = actualPoint
-    ? Math.sqrt(
-        Math.pow(guess.point.x - actualPoint.x, 2) +
-          Math.pow(guess.point.y - actualPoint.y, 2)
-      )
-    : 760;
-
-  const locationScore = Math.max(0, Math.round(100 - distance / 2));
-  const pitchTypeScore =
-    guess.pitchType === normalizePitchType(pitch.pitchType) ? 100 : 0;
-
-  return {
-    id: pitch.key,
-    pitch,
-    guessedPitchType: guess.pitchType,
-    point: guess.point,
-    locationScore,
-    pitchTypeScore,
-    totalScore: locationScore + pitchTypeScore,
-  };
-}
+type SelectedOutcome = {
+  atBatIndex: number;
+  outcome: PlateOutcomeId;
+};
 
 function countLabel(balls: number | null, strikes: number | null, outs: number | null) {
   return `${balls ?? "-"}-${strikes ?? "-"}, ${outs ?? "-"} out`;
-}
-
-function speedLabel(speed: number | null) {
-  return speed === null ? "-- mph" : `${Math.round(speed)} mph`;
-}
-
-function normalizeRevealDelay(delaySeconds: number) {
-  if (!Number.isFinite(delaySeconds)) {
-    return 0;
-  }
-
-  return Math.round(clamp(delaySeconds, 0, MAX_REVEAL_DELAY_SECONDS));
-}
-
-function getInitialRevealDelay() {
-  if (typeof window === "undefined") {
-    return 0;
-  }
-
-  const savedDelay = normalizeRevealDelay(
-    Number(window.localStorage.getItem(REVEAL_DELAY_STORAGE_KEY))
-  );
-
-  return savedDelay;
 }
 
 function formatTime(value: string) {
@@ -129,37 +54,57 @@ function formatTime(value: string) {
     return "Not checked";
   }
 
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
     minute: "2-digit",
     second: "2-digit",
+    timeZone: "America/New_York",
+    timeZoneName: "short",
   }).format(new Date(value));
+}
+
+function inningLabel(feed: LiveGameResponse) {
+  if (feed.inningState && feed.inning) {
+    return `${feed.inningState} ${feed.inning}`;
+  }
+
+  return feed.status.detailedState;
+}
+
+function lockTimingLabel(pitchCountAtLock: number) {
+  if (pitchCountAtLock <= 0) {
+    return "Before pitch 1";
+  }
+
+  return `After ${pitchCountAtLock} pitch${pitchCountAtLock === 1 ? "" : "es"}`;
+}
+
+function currentStreak(results: ScoredPrediction[]) {
+  let streak = 0;
+
+  for (let index = results.length - 1; index >= 0; index -= 1) {
+    const result = results[index];
+
+    if (result.predictedOutcome !== result.appearance.outcome) {
+      break;
+    }
+
+    streak += 1;
+  }
+
+  return streak;
 }
 
 function useLiveFeed(
   gamePk: string,
-  feedDelaySeconds: number,
-  holdVisibleUpdates: boolean,
-  onFeedUpdate: (feed: LiveGameResponse) => void,
-  onRawFeedUpdate: (
-    feed: LiveGameResponse,
-    receivedAtMs: number,
-    timecode: string
-  ) => void
+  onFeedUpdate: (feed: LiveGameResponse) => void
 ) {
   const [feed, setFeed] = useState<LiveGameResponse | null>(null);
   const [timecode, setTimecode] = useState<string | null>(null);
   const [checkedAt, setCheckedAt] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const hasLoadedFeed = useRef(false);
   const appliedTimecode = useRef("");
-  const delayedFeedTimers = useRef<number[]>([]);
-
-  const clearDelayedFeeds = useCallback(() => {
-    delayedFeedTimers.current.forEach((timer) => window.clearTimeout(timer));
-    delayedFeedTimers.current = [];
-  }, []);
 
   const applyFeed = useCallback(
     (nextFeed: LiveGameResponse, nextTimecode: string) => {
@@ -168,87 +113,50 @@ function useLiveFeed(
       }
 
       appliedTimecode.current = nextTimecode;
-      hasLoadedFeed.current = true;
       setFeed(nextFeed);
       onFeedUpdate(nextFeed);
     },
     [onFeedUpdate]
   );
 
-  useEffect(() => {
-    return () => {
-      clearDelayedFeeds();
-    };
-  }, [clearDelayedFeeds]);
+  const loadFeed = useCallback(
+    async (force = false) => {
+      try {
+        setError("");
 
-  const loadFeed = useCallback(async (force = false) => {
-    try {
-      setError("");
+        const params = new URLSearchParams();
 
-      if (force) {
-        clearDelayedFeeds();
-      }
-
-      const params = new URLSearchParams();
-
-      if (!force && timecode !== null) {
-        params.set("since", timecode);
-      }
-
-      const query = params.toString();
-      const response = await fetch(
-        `/api/mlb/live/${gamePk}${query ? `?${query}` : ""}`,
-        {
-          cache: "no-store",
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("Live feed unavailable");
-      }
-
-      const data = (await response.json()) as LivePollResponse;
-      setTimecode(data.timecode);
-      setCheckedAt(data.checkedAt);
-
-      if (data.changed && data.feed) {
-        const receivedAtMs = performance.now();
-        onRawFeedUpdate(data.feed, receivedAtMs, data.timecode);
-
-        if (holdVisibleUpdates && !force && hasLoadedFeed.current) {
-          return;
+        if (!force && timecode !== null) {
+          params.set("since", timecode);
         }
 
-        const shouldApplyImmediately =
-          force || !hasLoadedFeed.current || feedDelaySeconds === 0;
+        const query = params.toString();
+        const response = await fetch(
+          `/api/mlb/live/${gamePk}${query ? `?${query}` : ""}`,
+          {
+            cache: "no-store",
+          }
+        );
 
-        if (shouldApplyImmediately) {
+        if (!response.ok) {
+          throw new Error("Live feed unavailable");
+        }
+
+        const data = (await response.json()) as LivePollResponse;
+        setTimecode(data.timecode);
+        setCheckedAt(data.checkedAt);
+
+        if (data.changed && data.feed) {
           applyFeed(data.feed, data.timecode);
-        } else {
-          const timer = window.setTimeout(() => {
-            applyFeed(data.feed as LiveGameResponse, data.timecode);
-            delayedFeedTimers.current = delayedFeedTimers.current.filter(
-              (activeTimer) => activeTimer !== timer
-            );
-          }, feedDelaySeconds * 1000);
-
-          delayedFeedTimers.current.push(timer);
         }
+      } catch {
+        setError("Could not load live feed.");
+      } finally {
+        setLoading(false);
       }
-    } catch {
-      setError("Could not load live feed.");
-    } finally {
-      setLoading(false);
-    }
-  }, [
-    applyFeed,
-    clearDelayedFeeds,
-    feedDelaySeconds,
-    gamePk,
-    holdVisibleUpdates,
-    onRawFeedUpdate,
-    timecode,
-  ]);
+    },
+    [applyFeed, gamePk, timecode]
+  );
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -261,7 +169,7 @@ function useLiveFeed(
   useEffect(() => {
     const timer = window.setInterval(() => {
       void loadFeed();
-    }, 2000);
+    }, POLL_INTERVAL_MS);
 
     return () => window.clearInterval(timer);
   }, [loadFeed]);
@@ -272,278 +180,532 @@ function useLiveFeed(
     error,
     refresh: loadFeed,
     checkedAt,
-    timecode,
   };
 }
 
-function MiniScoreboard({ feed }: { feed: LiveGameResponse }) {
+function BaseDiamond({ bases }: { bases: BaseState }) {
+  const baseClass =
+    "absolute h-6 w-6 rotate-45 rounded-[3px] border-2 transition-colors";
+  const occupiedClass = "border-[#dcff00] bg-[#dcff00]";
+  const emptyClass = "border-[#65717d] bg-[#191b1f]";
+
   return (
-    <section className="grid gap-3 rounded-[24px] border border-[#444a50] bg-[#292c30] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] sm:grid-cols-[1fr_auto_1fr] sm:items-center">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-[0.14em] text-[#747a81]">
-            Away
+    <div aria-label="Base state" className="relative h-14 w-20 shrink-0">
+      <span
+        className={`${baseClass} left-[47px] top-[22px] ${
+          bases.first ? occupiedClass : emptyClass
+        }`}
+      />
+      <span
+        className={`${baseClass} left-[27px] top-[2px] ${
+          bases.second ? occupiedClass : emptyClass
+        }`}
+      />
+      <span
+        className={`${baseClass} left-[7px] top-[22px] ${
+          bases.third ? occupiedClass : emptyClass
+        }`}
+      />
+    </div>
+  );
+}
+
+function ScoreBugTeam({
+  team,
+  batting,
+}: {
+  team: TeamSummary;
+  batting: boolean;
+}) {
+  return (
+    <div
+      className={`flex min-w-[7.5rem] items-center gap-3 border-l border-[#3d454e] px-4 py-3 first:border-l-0 ${
+        batting ? "bg-[#2d3329]" : ""
+      }`}
+    >
+      <div className="min-w-0">
+        <div className="flex items-center gap-1.5">
+          {batting && (
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#dcff00]" />
+          )}
+          <p className="truncate text-sm font-semibold text-[#f6f7f2]">
+            {team.abbreviation}
           </p>
-          <p className="mt-1 text-3xl font-medium">{feed.away.abbreviation}</p>
         </div>
-        <p className="text-4xl font-medium">{feed.away.score ?? "-"}</p>
       </div>
+      <p className="text-3xl font-semibold text-[#f6f7f2]">
+        {team.score ?? "-"}
+      </p>
+    </div>
+  );
+}
 
-      <div className="hidden h-12 w-px bg-[#3c4147] sm:block" />
+function ScoreBug({ feed }: { feed: LiveGameResponse }) {
+  const topHalf = feed.inningState.toLowerCase().startsWith("top");
+  const bottomHalf = feed.inningState.toLowerCase().startsWith("bottom");
 
-      <div className="flex items-center justify-between gap-4 sm:flex-row-reverse">
-        <div className="sm:text-right">
-          <p className="text-xs font-medium uppercase tracking-[0.14em] text-[#747a81]">
-            Home
-          </p>
-          <p className="mt-1 text-3xl font-medium">{feed.home.abbreviation}</p>
+  return (
+    <section className="overflow-hidden rounded-lg border border-[#3d454e] bg-[#23272d] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+      <div className="grid gap-0 md:grid-cols-[auto_auto_minmax(13rem,auto)]">
+        <div className="grid grid-cols-2">
+          <ScoreBugTeam team={feed.away} batting={topHalf} />
+          <ScoreBugTeam team={feed.home} batting={bottomHalf} />
         </div>
-        <p className="text-4xl font-medium">{feed.home.score ?? "-"}</p>
+
+        <div className="flex items-center justify-between gap-5 border-t border-[#3d454e] px-4 py-3 md:border-l md:border-t-0">
+          <BaseDiamond bases={feed.bases} />
+          <div className="text-right">
+            <p className="text-xs font-semibold uppercase text-[#87919c]">
+              Count
+            </p>
+            <p className="mt-1 text-sm font-semibold text-[#f6f7f2]">
+              {countLabel(feed.balls, feed.strikes, feed.outs)}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-3 border-t border-[#3d454e] px-4 py-3 md:border-l md:border-t-0">
+          <p className="text-sm font-semibold text-[#dcff00]">
+            {inningLabel(feed)}
+          </p>
+          <p className="text-xs font-medium text-[#87919c]">
+            {feed.status.detailedState}
+          </p>
+        </div>
       </div>
     </section>
   );
 }
 
+function BatterMatchup({
+  atBat,
+  pendingPrediction,
+}: {
+  atBat: CurrentAtBat | null;
+  pendingPrediction: PendingPrediction | null;
+}) {
+  const title = atBat
+    ? `${atBat.batter} vs ${atBat.pitcher}`
+    : pendingPrediction
+      ? `${pendingPrediction.batter} vs ${pendingPrediction.pitcher}`
+      : "Waiting for the next plate appearance";
+
+  return (
+    <div className="min-h-[156px] rounded-lg border border-[#3d454e] bg-[#23272d] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+      <div className="max-w-[44rem]">
+        <p className="text-xs font-semibold uppercase text-[#87919c]">
+          Current Matchup
+        </p>
+        <h2 className="mt-2 text-3xl font-semibold leading-tight text-[#f6f7f2] sm:text-4xl">
+          {title}
+        </h2>
+        <p className="mt-3 text-sm font-medium text-[#aeb6bf]">
+          {atBat
+            ? `${countLabel(atBat.balls, atBat.strikes, atBat.outs)} | ${lockTimingLabel(
+                atBat.pitchCount
+              )}`
+            : pendingPrediction
+              ? "Waiting for the official result"
+              : "No active PA in the feed"}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function OutcomeButton({
+  outcomeId,
+  selected,
+  disabled,
+  onSelect,
+}: {
+  outcomeId: PlateOutcomeId;
+  selected: boolean;
+  disabled: boolean;
+  onSelect: (outcomeId: PlateOutcomeId) => void;
+}) {
+  const outcome = getPlateOutcomeOption(outcomeId);
+
+  return (
+    <button
+      disabled={disabled}
+      onClick={() => onSelect(outcomeId)}
+      className={`grid min-h-[96px] rounded-lg border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-45 ${
+        selected
+          ? "border-[#dcff00] bg-[#dcff00] text-[#17191b] shadow-[0_4px_0_#8ea500]"
+          : "border-[#3d454e] bg-[#191b1f] text-[#f6f7f2] hover:border-[#5c6670] hover:bg-[#272c33]"
+      }`}
+    >
+      <span
+        className={`text-xs font-semibold uppercase ${
+          selected ? "text-[#394100]" : "text-[#87919c]"
+        }`}
+      >
+        {outcome.shortLabel}
+      </span>
+      <span className="mt-1 text-lg font-semibold leading-tight">
+        {outcome.label}
+      </span>
+      <span
+        className={`mt-3 text-sm font-medium ${
+          selected ? "text-[#394100]" : "text-[#aeb6bf]"
+        }`}
+      >
+        {outcome.basePoints} pts
+      </span>
+    </button>
+  );
+}
+
+function PredictionConsole({
+  atBat,
+  selectedOutcome,
+  pendingPrediction,
+  onSelectOutcome,
+  onLock,
+}: {
+  atBat: CurrentAtBat | null;
+  selectedOutcome: PlateOutcomeId | null;
+  pendingPrediction: PendingPrediction | null;
+  onSelectOutcome: (outcomeId: PlateOutcomeId) => void;
+  onLock: () => void;
+}) {
+  const selectedOption = selectedOutcome
+    ? getPlateOutcomeOption(selectedOutcome)
+    : null;
+  const timingBonus = atBat ? timingBonusForPitchCount(atBat.pitchCount) : 0;
+  const disabled = !atBat || Boolean(pendingPrediction);
+
+  return (
+    <section className="rounded-lg border border-[#3d454e] bg-[#23272d] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase text-[#87919c]">
+            Make The Call
+          </p>
+          <h3 className="mt-2 text-2xl font-semibold text-[#f6f7f2]">
+            Pick this PA result
+          </h3>
+        </div>
+        <p className="text-sm font-medium text-[#aeb6bf]">
+          Early bonus:{" "}
+          <span className="font-semibold text-[#dcff00]">+{timingBonus}</span>
+        </p>
+      </div>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {PLATE_OUTCOME_OPTIONS.map((outcome) => (
+          <OutcomeButton
+            key={outcome.id}
+            outcomeId={outcome.id}
+            selected={selectedOutcome === outcome.id}
+            disabled={disabled}
+            onSelect={onSelectOutcome}
+          />
+        ))}
+      </div>
+
+      <div className="mt-5 flex min-h-[64px] flex-col justify-center gap-3 border-t border-[#3d454e] pt-4 sm:flex-row sm:items-center sm:justify-between">
+        {pendingPrediction ? (
+          <div>
+            <p className="font-semibold text-[#dcff00]">
+              Locked:{" "}
+              {getPlateOutcomeOption(pendingPrediction.predictedOutcome).label}
+            </p>
+            <p className="mt-1 text-sm text-[#aeb6bf]">
+              {lockTimingLabel(pendingPrediction.pitchCountAtLock)}
+            </p>
+          </div>
+        ) : selectedOption ? (
+          <div>
+            <p className="font-semibold text-[#f6f7f2]">
+              {selectedOption.label}
+            </p>
+            <p className="mt-1 text-sm text-[#aeb6bf]">
+              {selectedOption.basePoints + timingBonus} available
+            </p>
+          </div>
+        ) : (
+          <p className="text-sm text-[#aeb6bf]">
+            {atBat ? "No call selected" : "No active PA"}
+          </p>
+        )}
+
+        <button
+          disabled={!atBat || !selectedOutcome || Boolean(pendingPrediction)}
+          onClick={onLock}
+          className="h-12 rounded-lg bg-[#dcff00] px-6 font-semibold text-[#17191b] shadow-[0_4px_0_#8ea500] transition hover:bg-[#c8e900] active:translate-y-[3px] active:shadow-[0_1px_0_#8ea500] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[#dcff00]"
+        >
+          Lock Call
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function ScoreRail({
+  results,
+  lastResult,
+  checkedAt,
+}: {
+  results: ScoredPrediction[];
+  lastResult: ScoredPrediction | null;
+  checkedAt: string;
+}) {
+  const totalScore = results.reduce((sum, result) => sum + result.totalScore, 0);
+  const correctCalls = results.filter(
+    (result) => result.predictedOutcome === result.appearance.outcome
+  ).length;
+  const accuracy =
+    results.length === 0 ? 0 : Math.round((correctCalls / results.length) * 100);
+  const streak = currentStreak(results);
+
+  return (
+    <aside className="grid gap-4 lg:content-start">
+      <section className="rounded-lg border border-[#3d454e] bg-[#23272d] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <p className="text-xs font-semibold uppercase text-[#87919c]">Score</p>
+        <p className="mt-2 text-6xl font-semibold text-[#dcff00]">
+          {totalScore}
+        </p>
+        <div className="mt-4 grid grid-cols-3 gap-3 border-t border-[#3d454e] pt-4 text-sm">
+          <div>
+            <p className="text-[#87919c]">Calls</p>
+            <p className="mt-1 text-2xl font-semibold">{results.length}</p>
+          </div>
+          <div>
+            <p className="text-[#87919c]">Right</p>
+            <p className="mt-1 text-2xl font-semibold">{accuracy}%</p>
+          </div>
+          <div>
+            <p className="text-[#87919c]">Streak</p>
+            <p className="mt-1 text-2xl font-semibold">{streak}</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-[#3d454e] bg-[#23272d] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <p className="text-xs font-semibold uppercase text-[#87919c]">
+          Last Call
+        </p>
+        {lastResult ? (
+          <div className="mt-3">
+            <p className="text-2xl font-semibold text-[#f6f7f2]">
+              {getPlateOutcomeOption(lastResult.appearance.outcome).label}
+            </p>
+            <p className="mt-1 text-sm text-[#aeb6bf]">
+              Called{" "}
+              {getPlateOutcomeOption(lastResult.predictedOutcome).label}
+            </p>
+            <div className="mt-4 grid grid-cols-2 gap-3 border-t border-[#3d454e] pt-4 text-sm">
+              <div>
+                <p className="text-[#87919c]">Base</p>
+                <p className="mt-1 text-xl font-semibold">
+                  {lastResult.baseScore}
+                </p>
+              </div>
+              <div>
+                <p className="text-[#87919c]">Bonus</p>
+                <p className="mt-1 text-xl font-semibold">
+                  {lastResult.timingBonus}
+                </p>
+              </div>
+            </div>
+            <p className="mt-4 text-3xl font-semibold text-[#dcff00]">
+              +{lastResult.totalScore}
+            </p>
+          </div>
+        ) : (
+          <p className="mt-3 text-sm text-[#aeb6bf]">No calls scored yet.</p>
+        )}
+      </section>
+
+      <section className="rounded-lg border border-[#3d454e] bg-[#23272d] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs font-semibold uppercase text-[#87919c]">
+            Recent
+          </p>
+          <p className="text-xs font-medium text-[#87919c]">
+            {formatTime(checkedAt)}
+          </p>
+        </div>
+        <div className="mt-3 grid gap-3">
+          {results
+            .slice(-5)
+            .reverse()
+            .map((result) => (
+              <div
+                key={result.id}
+                className="border-t border-[#3d454e] pt-3 text-sm"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-semibold text-[#f6f7f2]">
+                    {result.appearance.batter}
+                  </p>
+                  <p className="font-semibold text-[#dcff00]">
+                    +{result.totalScore}
+                  </p>
+                </div>
+                <p className="mt-1 text-[#aeb6bf]">
+                  {getPlateOutcomeOption(result.predictedOutcome).shortLabel} /{" "}
+                  {getPlateOutcomeOption(result.appearance.outcome).shortLabel}
+                </p>
+              </div>
+            ))}
+          {!results.length && (
+            <p className="text-sm text-[#aeb6bf]">No scored calls yet.</p>
+          )}
+        </div>
+      </section>
+    </aside>
+  );
+}
+
 export default function LiveGameClient({ gamePk }: { gamePk: string }) {
-  const [pitchType, setPitchType] = useState("");
-  const [guessPoint, setGuessPoint] = useState<PitchPoint | null>(null);
-  const [pendingGuess, setPendingGuess] = useState<PendingGuess | null>(null);
-  const [lastResult, setLastResult] = useState<ScoredPitch | null>(null);
-  const [results, setResults] = useState<ScoredPitch[]>([]);
-  const [view, setView] = useState<PitchView>("catcher");
-  const [revealDelaySeconds, setRevealDelaySeconds] = useState(
-    getInitialRevealDelay
+  const [selectedOutcome, setSelectedOutcome] = useState<SelectedOutcome | null>(
+    null
   );
-  const [calibration, setCalibration] = useState<Calibration>({ status: "idle" });
-  const latestRawPitchCount = useRef(0);
+  const [pendingPrediction, setPendingPrediction] =
+    useState<PendingPrediction | null>(null);
+  const [lastResult, setLastResult] = useState<ScoredPrediction | null>(null);
+  const [results, setResults] = useState<ScoredPrediction[]>([]);
+  const pendingPredictionRef = useRef<PendingPrediction | null>(null);
 
-  const handleFeedUpdate = useCallback(
-    (nextFeed: LiveGameResponse) => {
-      if (
-        !pendingGuess ||
-        nextFeed.pitchCount <= pendingGuess.baselineSequence
-      ) {
-        return;
-      }
-
-      const revealedPitch = nextFeed.recentPitches.find(
-        (pitch) => pitch.sequence > pendingGuess.baselineSequence
-      );
-
-      if (!revealedPitch) {
-        return;
-      }
-
-      const scoredPitch = scorePitch(pendingGuess, revealedPitch);
-
-      setResults((currentResults) => {
-        if (currentResults.some((result) => result.id === scoredPitch.id)) {
-          return currentResults;
-        }
-
-        return [...currentResults, scoredPitch];
-      });
-      setLastResult(scoredPitch);
-      setPendingGuess(null);
-      setGuessPoint(null);
-      setPitchType("");
-    },
-    [pendingGuess]
-  );
-
-  const handleRawFeedUpdate = useCallback(
-    (nextFeed: LiveGameResponse, receivedAtMs: number, timecode: string) => {
-      latestRawPitchCount.current = Math.max(
-        latestRawPitchCount.current,
-        nextFeed.pitchCount
-      );
-
-      setCalibration((currentCalibration) => {
-        if (
-          currentCalibration.status !== "waiting" ||
-          nextFeed.pitchCount <= currentCalibration.baselinePitchCount
-        ) {
-          return currentCalibration;
-        }
-
-        const calibrationPitch =
-          nextFeed.recentPitches.find(
-            (pitch) => pitch.sequence > currentCalibration.baselinePitchCount
-          ) ?? nextFeed.latestPitch;
-
-        if (!calibrationPitch) {
-          return currentCalibration;
-        }
-
-        return {
-          status: "ready",
-          baselinePitchCount: currentCalibration.baselinePitchCount,
-          pitchSequence: calibrationPitch.sequence,
-          receivedAtMs,
-          timecode,
-        };
-      });
+  const updatePendingPrediction = useCallback(
+    (nextPrediction: PendingPrediction | null) => {
+      pendingPredictionRef.current = nextPrediction;
+      setPendingPrediction(nextPrediction);
     },
     []
   );
 
-  const isCalibrating =
-    calibration.status === "waiting" || calibration.status === "ready";
+  const scorePendingPrediction = useCallback(
+    (nextFeed: LiveGameResponse) => {
+      const activePrediction = pendingPredictionRef.current;
+
+      if (!activePrediction) {
+        return;
+      }
+
+      const completedAppearance = nextFeed.completedPlateAppearances.find(
+        (appearance) => appearance.atBatIndex === activePrediction.atBatIndex
+      );
+
+      if (!completedAppearance) {
+        return;
+      }
+
+      const score = scorePlatePrediction({
+        predictedOutcome: activePrediction.predictedOutcome,
+        actualOutcome: completedAppearance.outcome,
+        pitchCountAtLock: activePrediction.pitchCountAtLock,
+      });
+
+      const scoredPrediction: ScoredPrediction = {
+        id: completedAppearance.key,
+        appearance: completedAppearance,
+        predictedOutcome: activePrediction.predictedOutcome,
+        pitchCountAtLock: activePrediction.pitchCountAtLock,
+        baseScore: score.baseScore,
+        timingBonus: score.timingBonus,
+        totalScore: score.totalScore,
+        lockedAt: activePrediction.lockedAt,
+      };
+
+      setResults((currentResults) => {
+        if (currentResults.some((result) => result.id === scoredPrediction.id)) {
+          return currentResults;
+        }
+
+        return [...currentResults, scoredPrediction];
+      });
+      setLastResult(scoredPrediction);
+      updatePendingPrediction(null);
+      setSelectedOutcome(null);
+    },
+    [updatePendingPrediction]
+  );
 
   const { feed, loading, error, refresh, checkedAt } = useLiveFeed(
     gamePk,
-    revealDelaySeconds,
-    isCalibrating,
-    handleFeedUpdate,
-    handleRawFeedUpdate
+    scorePendingPrediction
   );
 
-  const canPlay = Boolean(feed?.status.isLive && feed.currentAtBat);
-  const targetBatterSide = normalizeBatterSide(
-    lastResult?.pitch.batterSide ??
-      feed?.currentAtBat?.batterSide ??
-      feed?.latestPitch?.batterSide
-  );
-  const sameAtBatLatestPitch =
-    feed?.latestPitch &&
-    feed.currentAtBat &&
-    feed.latestPitch.atBatIndex === feed.currentAtBat.atBatIndex
-      ? feed.latestPitch
+  const activeAtBat =
+    feed?.status.isLive && feed.currentAtBat && !feed.currentAtBat.isComplete
+      ? feed.currentAtBat
       : null;
-  const strikeZoneSource = lastResult?.pitch ?? sameAtBatLatestPitch;
-  const actualPoint = lastResult
-    ? plateCoordinatesToPoint(
-        lastResult.pitch.plateX,
-        lastResult.pitch.plateZ,
-        {
-          top: lastResult.pitch.strikeZoneTop,
-          bottom: lastResult.pitch.strikeZoneBottom,
-        }
-      )
-    : null;
-  const totalScore = useMemo(
-    () => results.reduce((sum, result) => sum + result.totalScore, 0),
-    [results]
-  );
-  const pitchAccuracy = useMemo(() => {
-    if (!results.length) {
-      return 0;
+
+  const activeSelectedOutcome =
+    activeAtBat && selectedOutcome?.atBatIndex === activeAtBat.atBatIndex
+      ? selectedOutcome.outcome
+      : null;
+
+  const lastCompletedAppearance = useMemo(() => {
+    if (!feed?.completedPlateAppearances.length) {
+      return null;
     }
 
-    return Math.round(
-      (results.filter((result) => result.pitchTypeScore === 100).length /
-        results.length) *
-      100
-    );
-  }, [results]);
-  const delayIsPreset = REVEAL_DELAY_OPTIONS.includes(revealDelaySeconds);
-  const revealDelayLabel =
-    revealDelaySeconds === 0 ? "Off" : `${revealDelaySeconds}s`;
+    return feed.completedPlateAppearances[
+      feed.completedPlateAppearances.length - 1
+    ];
+  }, [feed]);
 
-  function lockGuess() {
-    if (!feed || !pitchType || !guessPoint || !canPlay || pendingGuess) {
+  function selectOutcome(outcome: PlateOutcomeId) {
+    if (!activeAtBat || pendingPrediction) {
+      return;
+    }
+
+    setSelectedOutcome({
+      atBatIndex: activeAtBat.atBatIndex,
+      outcome,
+    });
+  }
+
+  function lockPrediction() {
+    if (!activeAtBat || !activeSelectedOutcome || pendingPrediction) {
       return;
     }
 
     setLastResult(null);
-    setPendingGuess({
-      pitchType,
-      point: guessPoint,
-      baselineSequence: feed.pitchCount,
+    updatePendingPrediction({
+      atBatIndex: activeAtBat.atBatIndex,
+      batter: activeAtBat.batter,
+      pitcher: activeAtBat.pitcher,
+      predictedOutcome: activeSelectedOutcome,
+      pitchCountAtLock: activeAtBat.pitchCount,
+      lockedAt: new Date().toISOString(),
     });
-  }
-
-  function chooseRevealDelay(delaySeconds: number) {
-    const normalizedDelay = normalizeRevealDelay(delaySeconds);
-    setRevealDelaySeconds(normalizedDelay);
-
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(
-        REVEAL_DELAY_STORAGE_KEY,
-        String(normalizedDelay)
-      );
-    }
-
-    if (normalizedDelay === 0) {
-      void refresh(true);
-    }
-  }
-
-  function startCalibration() {
-    if (!feed) {
-      return;
-    }
-
-    latestRawPitchCount.current = Math.max(
-      latestRawPitchCount.current,
-      feed.pitchCount
-    );
-    setCalibration({
-      status: "waiting",
-      baselinePitchCount: latestRawPitchCount.current,
-    });
-  }
-
-  function cancelCalibration() {
-    setCalibration({ status: "idle" });
-    void refresh(true);
-  }
-
-  function sawCalibrationPitch() {
-    if (calibration.status !== "ready") {
-      return;
-    }
-
-    const measuredSeconds = Math.max(
-      0,
-      (performance.now() - calibration.receivedAtMs) / 1000
-    );
-    const delaySeconds =
-      measuredSeconds < CALIBRATION_REACTION_GRACE_SECONDS
-        ? 0
-        : normalizeRevealDelay(
-            Math.ceil(measuredSeconds + CALIBRATION_SAFETY_BUFFER_SECONDS)
-          );
-
-    chooseRevealDelay(delaySeconds);
-    setCalibration({
-      status: "set",
-      delaySeconds,
-      measuredSeconds,
-      pitchSequence: calibration.pitchSequence,
-    });
-    void refresh(true);
   }
 
   return (
-    <main className="min-h-screen overflow-x-clip bg-[#202225] px-4 py-5 text-[#f5f5f1] sm:px-6 sm:py-7">
-      <section className="mx-auto flex w-full max-w-6xl flex-col gap-5">
-        <header className="flex flex-col gap-4 border-b border-[#3c4147] pb-4 sm:flex-row sm:items-end sm:justify-between">
+    <main className="min-h-screen overflow-x-clip bg-[#191b1f] px-4 py-5 text-[#f6f7f2] sm:px-6 sm:py-7">
+      <section className="mx-auto flex w-full max-w-7xl flex-col gap-5">
+        <header className="flex flex-col gap-4 border-b border-[#3d454e] pb-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <Link
               href="/live"
-              className="text-sm font-medium uppercase tracking-[0.16em] text-[#a0a4aa] transition hover:text-[#dcff00]"
+              className="text-sm font-semibold uppercase text-[#aeb6bf] transition hover:text-[#dcff00]"
             >
               Live Games
             </Link>
-            <h1 className="mt-2 text-4xl font-medium sm:text-5xl">
-              Perfect Pitch Live
+            <h1 className="mt-2 text-4xl font-semibold sm:text-5xl">
+              Shot Caller
             </h1>
           </div>
 
           <div className="flex items-center gap-2">
             <span
-              className={`rounded-full border px-3 py-1.5 text-xs font-medium uppercase tracking-[0.14em] ${
+              className={`rounded-lg border px-3 py-2 text-xs font-semibold uppercase ${
                 feed?.status.isLive
                   ? "border-[#dcff00] bg-[#dcff00] text-[#17191b]"
-                  : "border-[#444a50] bg-[#292c30] text-[#c9ccd0]"
+                  : "border-[#3d454e] bg-[#23272d] text-[#aeb6bf]"
               }`}
             >
               {feed?.status.detailedState ?? "Loading"}
             </span>
             <button
-              onClick={() => void refresh(false)}
-              className="rounded-xl border border-[#444a50] bg-[#292c30] px-3 py-2 text-sm font-medium text-[#c9ccd0] transition hover:border-[#596068] hover:text-[#f5f5f1]"
+              onClick={() => void refresh(true)}
+              className="h-10 rounded-lg border border-[#3d454e] bg-[#23272d] px-3 text-sm font-semibold text-[#f6f7f2] transition hover:border-[#5c6670]"
             >
               Refresh
             </button>
@@ -551,386 +713,63 @@ export default function LiveGameClient({ gamePk }: { gamePk: string }) {
         </header>
 
         {error && (
-          <div className="rounded-[20px] border border-[#7a3b3b] bg-[#332626] p-4 text-[#f5c7c7]">
+          <div className="rounded-lg border border-[#7a3b3b] bg-[#332626] p-4 text-[#f5c7c7]">
             {error}
           </div>
         )}
 
         {loading && (
-          <div className="h-[560px] animate-pulse rounded-[24px] border border-[#3c4147] bg-[#292c30]" />
+          <div className="h-[560px] animate-pulse rounded-lg border border-[#3d454e] bg-[#23272d]" />
         )}
 
         {!loading && feed && (
           <>
-            <MiniScoreboard feed={feed} />
+            <ScoreBug feed={feed} />
 
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-              <section className="rounded-[24px] border border-[#444a50] bg-[#292c30] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] sm:p-5">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-[#dcff00]">
-                      {feed.inningState && feed.inning
-                        ? `${feed.inningState} ${feed.inning}`
-                        : feed.status.detailedState}
-                    </p>
-                    <h2 className="mt-1 text-2xl font-medium">
-                      {feed.currentAtBat
-                        ? `${feed.currentAtBat.batter} vs ${feed.currentAtBat.pitcher}`
-                        : "Waiting for the next at-bat"}
-                    </h2>
-                    <p className="mt-1 text-sm text-[#a0a4aa]">
-                      {feed.currentAtBat
-                        ? countLabel(
-                            feed.currentAtBat.balls,
-                            feed.currentAtBat.strikes,
-                            feed.currentAtBat.outs
-                          )
-                        : countLabel(feed.balls, feed.strikes, feed.outs)}
-                    </p>
-                  </div>
+              <div className="grid content-start gap-4">
+                <BatterMatchup
+                  atBat={activeAtBat}
+                  pendingPrediction={pendingPrediction}
+                />
 
-                  <div className="flex rounded-full border border-[#444a50] bg-[#202225] p-0.5">
-                    <button
-                      onClick={() => setView("catcher")}
-                      className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                        view === "catcher"
-                          ? "bg-[#4a5360] text-[#f5f5f1]"
-                          : "text-[#747a81] hover:text-[#c9ccd0]"
-                      }`}
-                    >
-                      Catcher
-                    </button>
-                    <button
-                      onClick={() => setView("pitcher")}
-                      className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                        view === "pitcher"
-                          ? "bg-[#4a5360] text-[#f5f5f1]"
-                          : "text-[#747a81] hover:text-[#c9ccd0]"
-                      }`}
-                    >
-                      Pitcher
-                    </button>
-                  </div>
-                </div>
+                <PredictionConsole
+                  atBat={activeAtBat}
+                  selectedOutcome={activeSelectedOutcome}
+                  pendingPrediction={pendingPrediction}
+                  onSelectOutcome={selectOutcome}
+                  onLock={lockPrediction}
+                />
 
-                {!pitchType && !pendingGuess && (
-                  <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                    {PITCH_OPTIONS.map((option) => (
-                      <button
-                        key={option}
-                        disabled={!canPlay}
-                        onClick={() => {
-                          setPitchType(option);
-                          setGuessPoint(null);
-                          setLastResult(null);
-                        }}
-                        className="min-h-12 rounded-2xl border border-[#444a50] bg-[#202225] px-3 py-2 text-sm font-medium text-[#f5f5f1] transition hover:border-[#596068] hover:bg-[#33373c] disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        {option}
-                      </button>
-                    ))}
-                  </div>
+                {!activeAtBat && !pendingPrediction && lastCompletedAppearance && (
+                  <section className="rounded-lg border border-[#3d454e] bg-[#23272d] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                    <p className="text-xs font-semibold uppercase text-[#87919c]">
+                      Latest PA
+                    </p>
+                    <p className="mt-2 text-xl font-semibold text-[#f6f7f2]">
+                      {lastCompletedAppearance.batter}:{" "}
+                      {getPlateOutcomeOption(lastCompletedAppearance.outcome).label}
+                    </p>
+                    <p className="mt-1 text-sm text-[#aeb6bf]">
+                      {lastCompletedAppearance.result}
+                    </p>
+                  </section>
                 )}
 
-                {(pitchType || pendingGuess || lastResult) && (
-                  <div className="mt-5">
-                    <div className="mb-2 flex min-h-[48px] items-center justify-center text-center">
-                      {pendingGuess ? (
-                        <p className="text-sm font-medium text-[#dcff00]">
-                          Locked: {pendingGuess.pitchType}
-                        </p>
-                      ) : pitchType ? (
-                        <div className="flex items-center gap-3 text-sm">
-                          <p className="text-[#c9ccd0]">
-                            Selected:{" "}
-                            <span className="font-medium text-[#f5f5f1]">
-                              {pitchType}
-                            </span>
-                          </p>
-                          <button
-                            onClick={() => {
-                              setPitchType("");
-                              setGuessPoint(null);
-                            }}
-                            className="rounded-lg border border-[#444a50] bg-[#202225] px-2.5 py-1.5 text-xs font-medium text-[#c9ccd0] transition hover:border-[#596068] hover:text-[#f5f5f1]"
-                          >
-                            Back
-                          </button>
-                        </div>
-                      ) : lastResult ? (
-                        <div>
-                          <p className="text-sm font-medium text-[#f5f5f1]">
-                            {speedLabel(lastResult.pitch.velocity)}{" "}
-                            {lastResult.pitch.pitchType}
-                          </p>
-                          <p className="text-sm text-[#a0a4aa]">
-                            {lastResult.pitch.outcome}
-                          </p>
-                        </div>
-                      ) : null}
-                    </div>
-
-                    <div className="flex w-full flex-col items-center">
-                      <PitchTarget
-                        enabled={canPlay && Boolean(pitchType) && !pendingGuess}
-                        batterSide={targetBatterSide}
-                        guessPoint={guessPoint}
-                        actualPoint={actualPoint}
-                        lockedPoint={pendingGuess?.point ?? null}
-                        strikeZoneBottom={strikeZoneSource?.strikeZoneBottom}
-                        strikeZoneTop={strikeZoneSource?.strikeZoneTop}
-                        view={view}
-                        onPick={setGuessPoint}
-                      />
-                    </div>
-                  </div>
+                {!feed.status.isLive && (
+                  <section className="rounded-lg border border-[#3d454e] bg-[#23272d] p-5 text-sm text-[#aeb6bf] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                    {feed.status.isFinal
+                      ? "This game is final."
+                      : "The live feed is not active yet."}
+                  </section>
                 )}
+              </div>
 
-                <div className="mt-4 flex min-h-[80px] flex-col items-center justify-center gap-3 text-center">
-                  {pendingGuess ? (
-                    <>
-                      <p className="text-sm text-[#a0a4aa]">
-                        Waiting on pitch {pendingGuess.baselineSequence + 1}
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      {pitchType && (
-                        <button
-                          disabled={!canPlay || !guessPoint}
-                          onClick={lockGuess}
-                          className="rounded-2xl bg-[#dcff00] px-8 py-3 font-medium text-[#17191b] shadow-[0_4px_0_#91a800] transition hover:bg-[#c8e900] active:translate-y-[3px] active:shadow-[0_1px_0_#91a800] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-[#dcff00]"
-                        >
-                          Lock In
-                        </button>
-                      )}
-                      {!canPlay && (
-                        <p className="text-sm text-[#a0a4aa]">
-                          {feed.status.isFinal
-                            ? "This game is final."
-                            : "Live pitch feed is not active yet."}
-                        </p>
-                      )}
-                    </>
-                  )}
-                </div>
-              </section>
-
-              <aside className="flex flex-col gap-4">
-                <section className="rounded-[24px] border border-[#444a50] bg-[#292c30] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs font-medium uppercase tracking-[0.16em] text-[#747a81]">
-                      Reveal Delay
-                    </p>
-                    <p className="text-xs font-medium text-[#a0a4aa]">
-                      Checked {formatTime(checkedAt)}
-                    </p>
-                  </div>
-
-                  <div className="mt-4 grid grid-cols-5 gap-2">
-                    {REVEAL_DELAY_OPTIONS.map((delaySeconds) => (
-                      <button
-                        key={delaySeconds}
-                        onClick={() => chooseRevealDelay(delaySeconds)}
-                        className={`h-10 rounded-xl border text-sm font-medium transition ${
-                          revealDelaySeconds === delaySeconds
-                            ? "border-[#dcff00] bg-[#dcff00] text-[#17191b]"
-                            : "border-[#444a50] bg-[#202225] text-[#c9ccd0] hover:border-[#596068] hover:text-[#f5f5f1]"
-                        }`}
-                      >
-                        {delaySeconds === 0 ? "Off" : `${delaySeconds}s`}
-                      </button>
-                    ))}
-                  </div>
-
-                  <p className="mt-3 text-sm text-[#a0a4aa]">
-                    {revealDelaySeconds === 0
-                      ? "Fastest available MLB feed."
-                      : `${revealDelaySeconds}s behind MLB feed updates.`}
-                  </p>
-
-                  {!delayIsPreset && (
-                    <p className="mt-2 text-sm font-medium text-[#dcff00]">
-                      Calibrated: {revealDelayLabel}
-                    </p>
-                  )}
-
-                  <div className="mt-4 border-t border-[#3c4147] pt-4">
-                    {calibration.status === "idle" && (
-                      <button
-                        disabled={!feed}
-                        onClick={startCalibration}
-                        className="w-full rounded-2xl border border-[#444a50] bg-[#202225] px-4 py-3 text-sm font-medium text-[#f5f5f1] transition hover:border-[#596068] hover:bg-[#33373c] disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        Calibrate With Stream
-                      </button>
-                    )}
-
-                    {calibration.status === "waiting" && (
-                      <div className="grid gap-3">
-                        <div>
-                          <p className="text-sm font-medium text-[#dcff00]">
-                            Waiting for next pitch
-                          </p>
-                          <p className="mt-1 text-sm text-[#a0a4aa]">
-                            MLB feed held at pitch{" "}
-                            {calibration.baselinePitchCount}.
-                          </p>
-                        </div>
-                        <button
-                          onClick={cancelCalibration}
-                          className="rounded-2xl border border-[#444a50] bg-[#202225] px-4 py-3 text-sm font-medium text-[#c9ccd0] transition hover:border-[#596068] hover:text-[#f5f5f1]"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    )}
-
-                    {calibration.status === "ready" && (
-                      <div className="grid gap-3">
-                        <div>
-                          <p className="text-sm font-medium text-[#dcff00]">
-                            Pitch detected
-                          </p>
-                          <p className="mt-1 text-sm text-[#a0a4aa]">
-                            Tap when it crosses the plate.
-                          </p>
-                        </div>
-                        <div className="grid grid-cols-[1fr_auto] gap-2">
-                          <button
-                            onClick={sawCalibrationPitch}
-                            className="rounded-2xl bg-[#dcff00] px-4 py-3 text-sm font-medium text-[#17191b] shadow-[0_4px_0_#91a800] transition hover:bg-[#c8e900] active:translate-y-[3px] active:shadow-[0_1px_0_#91a800]"
-                          >
-                            Saw Pitch
-                          </button>
-                          <button
-                            onClick={cancelCalibration}
-                            className="rounded-2xl border border-[#444a50] bg-[#202225] px-4 py-3 text-sm font-medium text-[#c9ccd0] transition hover:border-[#596068] hover:text-[#f5f5f1]"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {calibration.status === "set" && (
-                      <div className="grid gap-3">
-                        <div>
-                          <p className="text-sm font-medium text-[#dcff00]">
-                            Set to{" "}
-                            {calibration.delaySeconds === 0
-                              ? "no delay"
-                              : `${calibration.delaySeconds}s`}
-                          </p>
-                          <p className="mt-1 text-sm text-[#a0a4aa]">
-                            Measured {Math.round(calibration.measuredSeconds)}s
-                            on pitch {calibration.pitchSequence}.
-                          </p>
-                        </div>
-                        <button
-                          onClick={startCalibration}
-                          className="rounded-2xl border border-[#444a50] bg-[#202225] px-4 py-3 text-sm font-medium text-[#f5f5f1] transition hover:border-[#596068] hover:bg-[#33373c]"
-                        >
-                          Calibrate Again
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </section>
-
-                <section className="rounded-[24px] border border-[#444a50] bg-[#292c30] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                  <p className="text-xs font-medium uppercase tracking-[0.16em] text-[#747a81]">
-                    Score
-                  </p>
-                  <p className="mt-2 text-6xl font-medium text-[#dcff00]">
-                    {totalScore}
-                  </p>
-                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                    <div className="rounded-2xl bg-[#202225] p-3">
-                      <p className="text-[#747a81]">Reads</p>
-                      <p className="mt-1 text-2xl font-medium">{results.length}</p>
-                    </div>
-                    <div className="rounded-2xl bg-[#202225] p-3">
-                      <p className="text-[#747a81]">Type</p>
-                      <p className="mt-1 text-2xl font-medium">{pitchAccuracy}%</p>
-                    </div>
-                  </div>
-                </section>
-
-                <section className="rounded-[24px] border border-[#444a50] bg-[#292c30] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                  <p className="text-xs font-medium uppercase tracking-[0.16em] text-[#747a81]">
-                    Last Pitch
-                  </p>
-                  {lastResult ? (
-                    <div className="mt-3">
-                      <p className="text-2xl font-medium">
-                        {speedLabel(lastResult.pitch.velocity)}{" "}
-                        {lastResult.pitch.pitchType}
-                      </p>
-                      <p className="mt-1 text-sm text-[#a0a4aa]">
-                        {lastResult.pitch.outcome}
-                      </p>
-                      <div className="mt-4 grid grid-cols-3 gap-2 text-center text-sm">
-                        <div className="rounded-2xl bg-[#202225] p-3">
-                          <p className="text-[#747a81]">Loc</p>
-                          <p className="mt-1 font-medium">
-                            {lastResult.locationScore}
-                          </p>
-                        </div>
-                        <div className="rounded-2xl bg-[#202225] p-3">
-                          <p className="text-[#747a81]">Type</p>
-                          <p className="mt-1 font-medium">
-                            {lastResult.pitchTypeScore}
-                          </p>
-                        </div>
-                        <div className="rounded-2xl bg-[#202225] p-3">
-                          <p className="text-[#747a81]">Total</p>
-                          <p className="mt-1 font-medium text-[#dcff00]">
-                            {lastResult.totalScore}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ) : feed.latestPitch ? (
-                    <div className="mt-3">
-                      <p className="text-xl font-medium">
-                        {speedLabel(feed.latestPitch.velocity)}{" "}
-                        {feed.latestPitch.pitchType}
-                      </p>
-                      <p className="mt-1 text-sm text-[#a0a4aa]">
-                        {feed.latestPitch.outcome}
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="mt-3 text-sm text-[#a0a4aa]">No pitches yet.</p>
-                  )}
-                </section>
-
-                <section className="rounded-[24px] border border-[#444a50] bg-[#292c30] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                  <p className="text-xs font-medium uppercase tracking-[0.16em] text-[#747a81]">
-                    Feed
-                  </p>
-                  <div className="mt-3 space-y-3">
-                    {results.slice(-5).reverse().map((result) => (
-                      <div
-                        key={result.id}
-                        className="border-t border-[#3c4147] pt-3 text-sm"
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="font-medium">{result.pitch.pitchType}</p>
-                          <p className="text-[#dcff00]">{result.totalScore}</p>
-                        </div>
-                        <p className="mt-1 text-[#a0a4aa]">
-                          Guessed {result.guessedPitchType}
-                        </p>
-                      </div>
-                    ))}
-                    {!results.length && (
-                      <p className="text-sm text-[#a0a4aa]">No locked reads yet.</p>
-                    )}
-                  </div>
-                </section>
-              </aside>
+              <ScoreRail
+                results={results}
+                lastResult={lastResult}
+                checkedAt={checkedAt}
+              />
             </div>
           </>
         )}

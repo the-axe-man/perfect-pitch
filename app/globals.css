@@ -2,18 +2,18 @@
 @import "tailwindcss";
 
 :root {
-  --background: #202225;
-  --surface: #292c30;
-  --surface-raised: #33373c;
-  --surface-pressed: #25282c;
-  --border: #444a50;
-  --border-strong: #596068;
-  --foreground: #f5f5f1;
-  --muted: #a0a4aa;
-  --faint: #747a81;
+  --background: #191b1f;
+  --surface: #23272d;
+  --surface-raised: #2f353c;
+  --surface-pressed: #20242a;
+  --border: #3d454e;
+  --border-strong: #5c6670;
+  --foreground: #f6f7f2;
+  --muted: #aeb6bf;
+  --faint: #87919c;
   --accent: #dcff00;
   --accent-hover: #c8e900;
-  --accent-shadow: #91a800;
+  --accent-shadow: #8ea500;
   --accent-foreground: #17191b;
 }
 
@@ -61,4 +61,3 @@ button {
   background: var(--accent);
   color: var(--accent-foreground);
 }
-

@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Perfect Pitch",
-  description: "Predict the next pitch type and location from real MLB games.",
+  title: "Shot Caller",
+  description: "Call live MLB plate appearance outcomes and score your reads.",
 };
 
 export default function RootLayout({

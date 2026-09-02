@@ -154,7 +154,7 @@ function PlayGame() {
             href="/"
             className="text-3xl font-medium tracking-[-0.03em] transition-colors hover:text-[#dcff00]"
           >
-            Perfect Pitch
+            Shot Caller
           </Link>
           <p className="mt-2 text-[#a0a4aa]">{challenge.title}</p>
           <div className="mt-6 rounded-[28px] border border-[#444a50] bg-[#292c30] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
@@ -269,7 +269,7 @@ function PlayGame() {
         href="/"
         className="text-3xl font-medium tracking-[-0.03em] transition-colors hover:text-[#dcff00]"
       >
-        Perfect Pitch
+        Shot Caller
       </Link>
 
       <section className="mt-3 mb-4 text-center">

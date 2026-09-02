@@ -1,36 +1,38 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Shot Caller
 
-## Getting Started
+Shot Caller is a live MLB prediction game. Pick the outcome of the current plate
+appearance, lock the call before the PA ends, and score when the official MLB
+feed reports the result.
 
-First, run the development server:
+The app is a Next.js project intended for a normal GitHub repository and Vercel
+deployment.
+
+## Game Loop
+
+- Choose a live MLB game from `/live`.
+- Watch the score bug for score, inning, count, outs, and runners on base.
+- Call the active PA outcome: out in play, strikeout, walk/HBP, single,
+  double/triple, home run, or other reach.
+- Correct calls score by rarity. Early locks add a small timing bonus.
+- Close calls in the same baseball family earn partial credit.
+
+## Development
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Verification
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run lint
+npm run build
+```
 
-## Learn More
+## Deployment
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Push this repository to GitHub, then import the repo in Vercel as a Next.js app.
+No ChatGPT Sites deployment files are required.

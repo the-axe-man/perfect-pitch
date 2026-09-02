@@ -1,3 +1,8 @@
+import {
+  categorizePlateOutcome,
+  type PlateOutcomeId,
+} from "@/lib/plate-outcomes";
+
 export const LIVE_PITCH_TYPES = [
   "Four-Seam Fastball",
   "Sinker",
@@ -70,6 +75,29 @@ export type CurrentAtBat = {
   batterSide: BatterSide;
   pitcher: string;
   description: string;
+  pitchCount: number;
+  balls: number | null;
+  strikes: number | null;
+  outs: number | null;
+  isComplete: boolean;
+};
+
+export type BaseState = {
+  first: boolean;
+  second: boolean;
+  third: boolean;
+};
+
+export type LivePlateAppearance = {
+  key: string;
+  atBatIndex: number;
+  batter: string;
+  batterSide: BatterSide;
+  pitcher: string;
+  result: string;
+  eventType: string;
+  outcome: PlateOutcomeId;
+  pitchCount: number;
   balls: number | null;
   strikes: number | null;
   outs: number | null;
@@ -82,10 +110,12 @@ export type LiveGameResponse = {
   home: TeamSummary;
   inning: string;
   inningState: string;
+  bases: BaseState;
   balls: number | null;
   strikes: number | null;
   outs: number | null;
   currentAtBat: CurrentAtBat | null;
+  completedPlateAppearances: LivePlateAppearance[];
   latestPitch: LivePitch | null;
   recentPitches: LivePitch[];
   pitchCount: number;
@@ -193,6 +223,16 @@ function formatInning(linescore: UnknownRecord): string {
   return current === null ? "" : String(current);
 }
 
+function normalizeBases(linescore: UnknownRecord): BaseState {
+  const offense = pickRecord(linescore, "offense");
+
+  return {
+    first: Object.keys(pickRecord(offense, "first")).length > 0,
+    second: Object.keys(pickRecord(offense, "second")).length > 0,
+    third: Object.keys(pickRecord(offense, "third")).length > 0,
+  };
+}
+
 export function normalizeSchedule(data: unknown, requestedDate: string): ScheduleResponse {
   const root = asRecord(data);
   const dates = asArray(root.dates);
@@ -236,6 +276,7 @@ function normalizeCurrentAtBat(play: UnknownRecord): CurrentAtBat | null {
   const result = pickRecord(play, "result");
   const count = pickRecord(play, "count");
   const about = pickRecord(play, "about");
+  const playEvents = asArray(play.playEvents).map(asRecord);
 
   return {
     atBatIndex: pickCount(about, "atBatIndex") ?? 0,
@@ -243,6 +284,46 @@ function normalizeCurrentAtBat(play: UnknownRecord): CurrentAtBat | null {
     batterSide: normalizeBatterSide(pickString(batSide, "code")),
     pitcher: pickString(pickRecord(matchup, "pitcher"), "fullName", "Current pitcher"),
     description: pickString(result, "description", pickString(result, "event")),
+    pitchCount: playEvents.filter((event) => event.isPitch === true).length,
+    balls: pickCount(count, "balls"),
+    strikes: pickCount(count, "strikes"),
+    outs: pickCount(count, "outs"),
+    isComplete: playIsComplete(play),
+  };
+}
+
+function playIsComplete(play: UnknownRecord) {
+  const about = pickRecord(play, "about");
+
+  return about.isComplete === true;
+}
+
+function normalizePlateAppearance(play: UnknownRecord): LivePlateAppearance | null {
+  const about = pickRecord(play, "about");
+  const result = pickRecord(play, "result");
+  const matchup = pickRecord(play, "matchup");
+  const batSide = pickRecord(matchup, "batSide");
+  const count = pickRecord(play, "count");
+  const atBatIndex = pickCount(about, "atBatIndex");
+  const eventType = pickString(result, "eventType");
+  const resultLabel = pickString(result, "event", pickString(result, "description"));
+
+  if (atBatIndex === null || !eventType) {
+    return null;
+  }
+
+  return {
+    key: String(atBatIndex),
+    atBatIndex,
+    batter: pickString(pickRecord(matchup, "batter"), "fullName", "Batter"),
+    batterSide: normalizeBatterSide(pickString(batSide, "code")),
+    pitcher: pickString(pickRecord(matchup, "pitcher"), "fullName", "Pitcher"),
+    result: resultLabel || "Plate appearance complete",
+    eventType,
+    outcome: categorizePlateOutcome(eventType),
+    pitchCount: asArray(play.playEvents).filter(
+      (event) => asRecord(event).isPitch === true
+    ).length,
     balls: pickCount(count, "balls"),
     strikes: pickCount(count, "strikes"),
     outs: pickCount(count, "outs"),
@@ -297,6 +378,12 @@ export function normalizeLiveGame(data: unknown): LiveGameResponse {
   const allPlays = asArray(plays.allPlays).map(asRecord);
   const currentPlay = pickRecord(plays, "currentPlay");
   const pitchEvents: LivePitch[] = [];
+  const completedPlateAppearances = allPlays
+    .filter(playIsComplete)
+    .map(normalizePlateAppearance)
+    .filter(
+      (appearance): appearance is LivePlateAppearance => appearance !== null
+    );
 
   allPlays.forEach((play) => {
     const about = pickRecord(play, "about");
@@ -322,10 +409,12 @@ export function normalizeLiveGame(data: unknown): LiveGameResponse {
     home: normalizeTeam(pickRecord(gameTeams, "home"), pickRecord(lineTeams, "home")),
     inning: formatInning(linescore),
     inningState: pickString(linescore, "inningState"),
+    bases: normalizeBases(linescore),
     balls: pickCount(linescore, "balls"),
     strikes: pickCount(linescore, "strikes"),
     outs: pickCount(linescore, "outs"),
     currentAtBat: normalizeCurrentAtBat(currentPlay),
+    completedPlateAppearances: completedPlateAppearances.slice(-12),
     latestPitch: pitchEvents[pitchEvents.length - 1] ?? null,
     recentPitches: pitchEvents.slice(-12),
     pitchCount: pitchEvents.length,
