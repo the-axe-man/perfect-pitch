@@ -8,22 +8,53 @@ export type PitchPoint = {
   y: number;
 };
 
-const FIELD_WIDTH = 760;
-const FIELD_HEIGHT = 760;
+export type StrikeZoneBounds = {
+  top: number | null | undefined;
+  bottom: number | null | undefined;
+};
+
+const FIELD_WIDTH = 560;
+const FIELD_HEIGHT = 620;
 const PLATE_WIDTH_FEET = 17 / 12;
-const ZONE_BOTTOM_FEET = 1.5;
-const ZONE_TOP_FEET = 3.5;
-const ZONE_WIDTH = 206;
+const DEFAULT_ZONE_BOTTOM_FEET = 1.6;
+const DEFAULT_ZONE_TOP_FEET = 3.5;
+const ZONE_WIDTH = 210;
 const PIXELS_PER_FOOT = ZONE_WIDTH / PLATE_WIDTH_FEET;
-const ZONE_HEIGHT = (ZONE_TOP_FEET - ZONE_BOTTOM_FEET) * PIXELS_PER_FOOT;
-const ZONE_TOP = 232;
-const PLATE_TOP = 666;
+const ZONE_CENTER_X = FIELD_WIDTH / 2;
+const ZONE_CENTER_Y = FIELD_HEIGHT / 2;
+const PLATE_TOP = 540;
 const PLATE_HEIGHT = 34;
-const RIGHT_HANDED_PLATE_CENTER_X = 458;
-const LEFT_HANDED_PLATE_CENTER_X = FIELD_WIDTH - RIGHT_HANDED_PLATE_CENTER_X;
+const BATTER_HEIGHT = 642;
+const BATTER_WIDTH = 241;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function normalizeStrikeZone(
+  bounds: StrikeZoneBounds | null | undefined
+): { top: number; bottom: number } {
+  const top = bounds?.top;
+  const bottom = bounds?.bottom;
+
+  if (
+    typeof top === "number" &&
+    Number.isFinite(top) &&
+    typeof bottom === "number" &&
+    Number.isFinite(bottom) &&
+    top > bottom
+  ) {
+    return { top, bottom };
+  }
+
+  return {
+    top: DEFAULT_ZONE_TOP_FEET,
+    bottom: DEFAULT_ZONE_BOTTOM_FEET,
+  };
+}
+
+function zoneHeight(bounds: { top: number; bottom: number }) {
+  return (bounds.top - bounds.bottom) * PIXELS_PER_FOOT;
 }
 
 export function normalizeBatterSide(value: string | null | undefined): BatterSide {
@@ -32,12 +63,6 @@ export function normalizeBatterSide(value: string | null | undefined): BatterSid
   }
 
   return "R";
-}
-
-function plateCenterX(side: BatterSide) {
-  return normalizeBatterSide(side) === "L"
-    ? LEFT_HANDED_PLATE_CENTER_X
-    : RIGHT_HANDED_PLATE_CENTER_X;
 }
 
 function displayX(x: number, view: PitchView) {
@@ -71,18 +96,19 @@ function pointStyle(point: PitchPoint, view: PitchView): CSSProperties {
 export function plateCoordinatesToPoint(
   plateX: number | null,
   plateZ: number | null,
-  batterSide: BatterSide = "R"
+  strikeZone?: StrikeZoneBounds | null
 ): PitchPoint | null {
   if (plateX === null || plateZ === null) {
     return null;
   }
 
-  const centerX = plateCenterX(batterSide);
+  const normalizedZone = normalizeStrikeZone(strikeZone);
+  const zoneCenterFeet = (normalizedZone.top + normalizedZone.bottom) / 2;
 
   return {
-    x: clamp(centerX + plateX * PIXELS_PER_FOOT, 12, FIELD_WIDTH - 12),
+    x: clamp(ZONE_CENTER_X + plateX * PIXELS_PER_FOOT, 12, FIELD_WIDTH - 12),
     y: clamp(
-      ZONE_TOP + (ZONE_TOP_FEET - plateZ) * PIXELS_PER_FOOT,
+      ZONE_CENTER_Y + (zoneCenterFeet - plateZ) * PIXELS_PER_FOOT,
       12,
       FIELD_HEIGHT - 12
     ),
@@ -100,6 +126,8 @@ function isBatterOnLeft(side: BatterSide, view: PitchView) {
 function batterStyle(side: BatterSide, view: PitchView): CSSProperties {
   const onLeft = isBatterOnLeft(side, view);
   const isLeftHanded = normalizeBatterSide(side) === "L";
+  const plateBottom = PLATE_TOP + PLATE_HEIGHT;
+  const bottom = FIELD_HEIGHT - plateBottom + 4;
 
   return {
     backgroundImage: `url(${
@@ -107,10 +135,13 @@ function batterStyle(side: BatterSide, view: PitchView): CSSProperties {
         ? "/batter-rh-catcher.png"
         : "/batter-rh-pitcher.png"
     })`,
-    backgroundPosition: onLeft ? "left top" : "right top",
+    backgroundPosition: onLeft ? "left bottom" : "right bottom",
+    bottom: `${(bottom / FIELD_HEIGHT) * 100}%`,
+    height: `${(BATTER_HEIGHT / FIELD_HEIGHT) * 100}%`,
+    width: `${(BATTER_WIDTH / FIELD_WIDTH) * 100}%`,
     transform: isLeftHanded ? "scaleX(-1)" : undefined,
-    transformOrigin: "center",
-    ...(onLeft ? { left: "-2.5%" } : { right: "-2.5%" }),
+    transformOrigin: "center bottom",
+    ...(onLeft ? { left: "2%" } : { right: "2%" }),
   };
 }
 
@@ -120,6 +151,8 @@ export function PitchTarget({
   guessPoint,
   actualPoint,
   lockedPoint,
+  strikeZoneBottom,
+  strikeZoneTop,
   view,
   onPick,
 }: {
@@ -128,13 +161,20 @@ export function PitchTarget({
   guessPoint: PitchPoint | null;
   actualPoint?: PitchPoint | null;
   lockedPoint?: PitchPoint | null;
+  strikeZoneBottom?: number | null;
+  strikeZoneTop?: number | null;
   view: PitchView;
   onPick: (point: PitchPoint) => void;
 }) {
   const normalizedSide = normalizeBatterSide(batterSide);
-  const centerX = plateCenterX(normalizedSide);
-  const zoneLeft = centerX - ZONE_WIDTH / 2;
-  const plateLeft = centerX - ZONE_WIDTH / 2;
+  const strikeZone = normalizeStrikeZone({
+    top: strikeZoneTop,
+    bottom: strikeZoneBottom,
+  });
+  const zoneHeightPx = zoneHeight(strikeZone);
+  const zoneLeft = ZONE_CENTER_X - ZONE_WIDTH / 2;
+  const zoneTop = ZONE_CENTER_Y - zoneHeightPx / 2;
+  const plateLeft = ZONE_CENTER_X - ZONE_WIDTH / 2;
   const displayGuess = lockedPoint ?? guessPoint;
 
   function handlePointer(event: PointerEvent<HTMLDivElement>) {
@@ -160,20 +200,20 @@ export function PitchTarget({
     <div
       aria-label="Pitch location target"
       onPointerDown={handlePointer}
-      className={`relative aspect-square w-full max-w-[760px] overflow-visible ${
+      className={`relative isolate aspect-[560/620] w-full max-w-[520px] overflow-visible ${
         enabled ? "cursor-crosshair" : "cursor-not-allowed"
       }`}
     >
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute top-[6%] z-0 h-[101%] w-[39%] bg-contain bg-no-repeat opacity-[0.16]"
+        className="pointer-events-none absolute z-0 bg-contain bg-no-repeat opacity-[0.24]"
         style={batterStyle(normalizedSide, view)}
       />
 
       <div
         aria-hidden="true"
         className="absolute z-10 border-2 border-[#7f8790]/90 shadow-[0_0_18px_rgba(0,0,0,0.1)]"
-        style={displayRectStyle(zoneLeft, ZONE_TOP, ZONE_WIDTH, ZONE_HEIGHT, view)}
+        style={displayRectStyle(zoneLeft, zoneTop, ZONE_WIDTH, zoneHeightPx, view)}
       >
         <div className="absolute left-1/3 top-0 h-full border-l border-dashed border-[#555c64]/70" />
         <div className="absolute left-2/3 top-0 h-full border-l border-dashed border-[#555c64]/70" />

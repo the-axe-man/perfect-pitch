@@ -57,6 +57,8 @@ export type LivePitch = {
   outcome: string;
   plateX: number | null;
   plateZ: number | null;
+  strikeZoneBottom: number | null;
+  strikeZoneTop: number | null;
   balls: number | null;
   strikes: number | null;
   outs: number | null;
@@ -276,6 +278,8 @@ function normalizePitch(
     outcome: pickString(details, "description", pickString(details, "event", "Pitch")),
     plateX: pickNumber(coordinates, "pX"),
     plateZ: pickNumber(coordinates, "pZ"),
+    strikeZoneBottom: pickNumber(pitchData, "strikeZoneBottom"),
+    strikeZoneTop: pickNumber(pitchData, "strikeZoneTop"),
     balls: pickCount(count, "balls"),
     strikes: pickCount(count, "strikes"),
     outs: pickCount(count, "outs"),

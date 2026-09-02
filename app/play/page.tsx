@@ -66,7 +66,10 @@ function PlayGame() {
   const actualPoint = plateCoordinatesToPoint(
     actualPitch.plateX,
     actualPitch.plateZ,
-    batterSide
+    {
+      top: actualPitch.strikeZoneTop,
+      bottom: actualPitch.strikeZoneBottom,
+    }
   );
 
   function getScore() {
@@ -348,6 +351,8 @@ function PlayGame() {
             guessPoint={guess}
             actualPoint={revealed ? actualPoint : null}
             lockedPoint={null}
+            strikeZoneBottom={actualPitch.strikeZoneBottom}
+            strikeZoneTop={actualPitch.strikeZoneTop}
             view={view}
             onPick={setGuess}
           />

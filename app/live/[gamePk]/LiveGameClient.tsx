@@ -69,7 +69,10 @@ function scorePitch(guess: PendingGuess, pitch: LivePitch): ScoredPitch {
   const actualPoint = plateCoordinatesToPoint(
     pitch.plateX,
     pitch.plateZ,
-    pitch.batterSide
+    {
+      top: pitch.strikeZoneTop,
+      bottom: pitch.strikeZoneBottom,
+    }
   );
   const distance = actualPoint
     ? Math.sqrt(
@@ -401,11 +404,21 @@ export default function LiveGameClient({ gamePk }: { gamePk: string }) {
       feed?.currentAtBat?.batterSide ??
       feed?.latestPitch?.batterSide
   );
+  const sameAtBatLatestPitch =
+    feed?.latestPitch &&
+    feed.currentAtBat &&
+    feed.latestPitch.atBatIndex === feed.currentAtBat.atBatIndex
+      ? feed.latestPitch
+      : null;
+  const strikeZoneSource = lastResult?.pitch ?? sameAtBatLatestPitch;
   const actualPoint = lastResult
     ? plateCoordinatesToPoint(
         lastResult.pitch.plateX,
         lastResult.pitch.plateZ,
-        lastResult.pitch.batterSide
+        {
+          top: lastResult.pitch.strikeZoneTop,
+          bottom: lastResult.pitch.strikeZoneBottom,
+        }
       )
     : null;
   const totalScore = useMemo(
@@ -664,6 +677,8 @@ export default function LiveGameClient({ gamePk }: { gamePk: string }) {
                         guessPoint={guessPoint}
                         actualPoint={actualPoint}
                         lockedPoint={pendingGuess?.point ?? null}
+                        strikeZoneBottom={strikeZoneSource?.strikeZoneBottom}
+                        strikeZoneTop={strikeZoneSource?.strikeZoneTop}
                         view={view}
                         onPick={setGuessPoint}
                       />

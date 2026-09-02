@@ -23,7 +23,9 @@
       "velocity": 94,
       "outcome": "Ball",
       "plateX": -1.1860928845033627,
-      "plateZ": 2.0556842573876253
+      "plateZ": 2.0556842573876253,
+      "strikeZoneTop": 3.56971552976139,
+      "strikeZoneBottom": 1.75040932075689
     },
     {
       "id": 2,
@@ -40,7 +42,9 @@
       "velocity": 101,
       "outcome": "Called Strike",
       "plateX": 0.56488116606997,
-      "plateZ": 1.572833344868682
+      "plateZ": 1.572833344868682,
+      "strikeZoneTop": 3.56897188857943,
+      "strikeZoneBottom": 1.73531201189893
     },
     {
       "id": 3,
@@ -57,7 +61,9 @@
       "velocity": 100,
       "outcome": "Ball",
       "plateX": -1.507482749045652,
-      "plateZ": 3.136194767293545
+      "plateZ": 3.136194767293545,
+      "strikeZoneTop": 3.56922791040584,
+      "strikeZoneBottom": 1.79024382380135
     },
     {
       "id": 4,
@@ -74,7 +80,9 @@
       "velocity": 95,
       "outcome": "Ball",
       "plateX": -0.1221877492821543,
-      "plateZ": 1.4980346414020844
+      "plateZ": 1.4980346414020844,
+      "strikeZoneTop": 3.59270710456076,
+      "strikeZoneBottom": 1.81374944529112
     },
     {
       "id": 5,
@@ -91,7 +99,9 @@
       "velocity": 101,
       "outcome": "In Play",
       "plateX": 0.7842223054553226,
-      "plateZ": 2.2177501033214098
+      "plateZ": 2.2177501033214098,
+      "strikeZoneTop": 3.62,
+      "strikeZoneBottom": 1.8
     }
   ]
 }

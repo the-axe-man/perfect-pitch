@@ -43,6 +43,8 @@ const LIVE_FIELDS = [
   "isPitch",
   "pitchData",
   "startSpeed",
+  "strikeZoneBottom",
+  "strikeZoneTop",
   "coordinates",
   "pX",
   "pZ",
