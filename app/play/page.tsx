@@ -148,7 +148,7 @@ function PlayGame() {
 
   if (gameComplete) {
     return (
-      <main className="min-h-screen bg-[#202225] text-[#f5f5f1] flex flex-col items-center p-6">
+      <main className="min-h-screen overflow-x-clip bg-[#202225] text-[#f5f5f1] flex flex-col items-center p-6">
         <section className="w-full max-w-md text-center">
           <Link
             href="/"
@@ -264,7 +264,7 @@ function PlayGame() {
   }
 
   return (
-    <main className="min-h-screen bg-[#202225] text-[#f5f5f1] flex flex-col items-center p-4">
+    <main className="min-h-screen overflow-x-clip bg-[#202225] text-[#f5f5f1] flex flex-col items-center p-4">
       <Link
         href="/"
         className="text-3xl font-medium tracking-[-0.03em] transition-colors hover:text-[#dcff00]"

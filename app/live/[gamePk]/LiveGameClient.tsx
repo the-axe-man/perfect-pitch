@@ -516,7 +516,7 @@ export default function LiveGameClient({ gamePk }: { gamePk: string }) {
   }
 
   return (
-    <main className="min-h-screen bg-[#202225] px-4 py-5 text-[#f5f5f1] sm:px-6 sm:py-7">
+    <main className="min-h-screen overflow-x-clip bg-[#202225] px-4 py-5 text-[#f5f5f1] sm:px-6 sm:py-7">
       <section className="mx-auto flex w-full max-w-6xl flex-col gap-5">
         <header className="flex flex-col gap-4 border-b border-[#3c4147] pb-4 sm:flex-row sm:items-end sm:justify-between">
           <div>

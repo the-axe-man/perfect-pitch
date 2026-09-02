@@ -18,14 +18,15 @@ const FIELD_HEIGHT = 620;
 const PLATE_WIDTH_FEET = 17 / 12;
 const DEFAULT_ZONE_BOTTOM_FEET = 1.6;
 const DEFAULT_ZONE_TOP_FEET = 3.5;
-const ZONE_WIDTH = 210;
+const ZONE_WIDTH = 190;
 const PIXELS_PER_FOOT = ZONE_WIDTH / PLATE_WIDTH_FEET;
 const ZONE_CENTER_X = FIELD_WIDTH / 2;
-const ZONE_CENTER_Y = FIELD_HEIGHT / 2;
+const ZONE_CENTER_Y = 292;
 const PLATE_TOP = 540;
 const PLATE_HEIGHT = 34;
 const BATTER_HEIGHT = 642;
 const BATTER_WIDTH = 241;
+const BATTER_OUTSIDE_OFFSET = "-21%";
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -141,7 +142,9 @@ function batterStyle(side: BatterSide, view: PitchView): CSSProperties {
     width: `${(BATTER_WIDTH / FIELD_WIDTH) * 100}%`,
     transform: isLeftHanded ? "scaleX(-1)" : undefined,
     transformOrigin: "center bottom",
-    ...(onLeft ? { left: "2%" } : { right: "2%" }),
+    ...(onLeft
+      ? { left: BATTER_OUTSIDE_OFFSET }
+      : { right: BATTER_OUTSIDE_OFFSET }),
   };
 }
 
