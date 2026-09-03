@@ -271,12 +271,51 @@ function formatTime(value: string) {
   }).format(new Date(value));
 }
 
-function inningLabel(feed: LiveGameResponse) {
-  if (feed.inningState && feed.inning) {
-    return `${feed.inningState} ${feed.inning}`;
+function inningNumberLabel(inning: string) {
+  return inning.match(/\d+/)?.[0] ?? inning;
+}
+
+function halfInningMarker(feed: LiveGameResponse) {
+  const inningNumber = feed.inning ? inningNumberLabel(feed.inning) : "";
+  const inningState = feed.inningState.toLowerCase();
+
+  if (inningNumber && inningState.startsWith("top")) {
+    return {
+      direction: "up" as const,
+      label: inningNumber,
+      ariaLabel: `Top ${feed.inning}`,
+    };
   }
 
-  return feed.status.detailedState;
+  if (inningNumber && inningState.startsWith("bottom")) {
+    return {
+      direction: "down" as const,
+      label: inningNumber,
+      ariaLabel: `Bottom ${feed.inning}`,
+    };
+  }
+
+  if (inningNumber && inningState.startsWith("middle")) {
+    return {
+      direction: null,
+      label: `Mid ${inningNumber}`,
+      ariaLabel: `Middle ${feed.inning}`,
+    };
+  }
+
+  if (inningNumber && inningState.startsWith("end")) {
+    return {
+      direction: null,
+      label: `End ${inningNumber}`,
+      ariaLabel: `End ${feed.inning}`,
+    };
+  }
+
+  return {
+    direction: null,
+    label: feed.status.detailedState,
+    ariaLabel: feed.status.detailedState,
+  };
 }
 
 function lockTimingLabel(pitchCountAtLock: number) {
@@ -585,11 +624,48 @@ function ScoreBugTeam({
   );
 }
 
+function HalfInningMarker({
+  marker,
+}: {
+  marker: ReturnType<typeof halfInningMarker>;
+}) {
+  return (
+    <span aria-label={marker.ariaLabel} className="min-w-0">
+      <ChangePulse
+        value={marker.ariaLabel}
+        className="max-w-full text-[#dcff00]"
+      >
+        <span className="flex max-w-full items-center gap-1.5">
+          {marker.direction && (
+            <span
+              aria-hidden="true"
+              className={classNames(
+                "h-0 w-0 shrink-0 border-x-[7px] border-x-transparent",
+                marker.direction === "up"
+                  ? "border-b-[12px] border-b-[#dcff00]"
+                  : "border-t-[12px] border-t-[#dcff00]"
+              )}
+            />
+          )}
+          <span
+            className={classNames(
+              "min-w-0 font-semibold leading-none",
+              marker.direction ? "text-3xl" : "truncate text-lg"
+            )}
+          >
+            {marker.label}
+          </span>
+        </span>
+      </ChangePulse>
+    </span>
+  );
+}
+
 function ScoreBug({ feed }: { feed: LiveGameResponse }) {
   const topHalf = feed.inningState.toLowerCase().startsWith("top");
   const bottomHalf = feed.inningState.toLowerCase().startsWith("bottom");
   const currentCount = countLabel(feed.balls, feed.strikes);
-  const currentInning = inningLabel(feed);
+  const currentInning = halfInningMarker(feed);
   const currentOuts = outsLabel(feed.outs);
 
   return (
@@ -610,18 +686,13 @@ function ScoreBug({ feed }: { feed: LiveGameResponse }) {
             </p>
             <ChangePulse
               value={currentCount}
-              className="mt-0.5 text-2xl font-semibold leading-none text-[#f6f7f2]"
+              className="mt-0.5 text-[1.7rem] font-semibold leading-none text-[#f6f7f2]"
             >
               {currentCount}
             </ChangePulse>
           </div>
-          <div className="flex min-w-0 items-center justify-between gap-3 px-4 py-2">
-            <ChangePulse
-              value={currentInning}
-              className="truncate text-lg font-semibold text-[#dcff00]"
-            >
-              {currentInning}
-            </ChangePulse>
+          <div className="flex min-w-0 items-center justify-between gap-2 px-3 py-2 sm:px-4">
+            <HalfInningMarker marker={currentInning} />
             <ChangePulse
               value={currentOuts}
               className="shrink-0 text-lg font-semibold text-[#f6f7f2]"
