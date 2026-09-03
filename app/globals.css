@@ -79,9 +79,14 @@ button {
 }
 
 .result-flash-card {
-  animation: result-flash-card 2600ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: result-flash-card 3100ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
   transform-origin: bottom center;
   will-change: opacity, transform, filter;
+}
+
+.live-page-count-pulse {
+  animation: live-page-count-pulse 760ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: background-color;
 }
 
 @keyframes live-change-pulse {
@@ -121,6 +126,20 @@ button {
   }
 }
 
+@keyframes live-page-count-pulse {
+  0% {
+    background-color: #191b1f;
+  }
+
+  34% {
+    background-color: #20242a;
+  }
+
+  100% {
+    background-color: #191b1f;
+  }
+}
+
 @keyframes result-flash-card {
   0% {
     filter: brightness(0.96);
@@ -150,6 +169,7 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .live-change-pulse,
   .live-number-pop,
+  .live-page-count-pulse,
   .result-flash-card {
     animation: none;
     filter: none;

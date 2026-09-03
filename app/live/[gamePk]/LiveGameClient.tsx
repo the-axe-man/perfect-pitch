@@ -30,7 +30,7 @@ const POLL_INTERVAL_MS = 2000;
 const STORAGE_VERSION = 2;
 const MAX_STORED_APPEARANCES = 140;
 const RECENT_COLLAPSED_COUNT = 2;
-const RESULT_FLASH_MS = 2600;
+const RESULT_FLASH_MS = 3100;
 
 type PendingPrediction = {
   atBatIndex: number;
@@ -201,8 +201,16 @@ function mergePlateAppearances(
     .slice(-MAX_STORED_APPEARANCES);
 }
 
-function countLabel(balls: number | null, strikes: number | null, outs: number | null) {
-  return `${balls ?? "-"}-${strikes ?? "-"}, ${outs ?? "-"} out`;
+function countLabel(balls: number | null, strikes: number | null) {
+  return `${balls ?? "-"}-${strikes ?? "-"}`;
+}
+
+function outsLabel(outs: number | null) {
+  if (outs === null) {
+    return "- out";
+  }
+
+  return `${outs} out${outs === 1 ? "" : "s"}`;
 }
 
 function teamLogoUrl(team: TeamSummary) {
@@ -512,24 +520,24 @@ function useLiveFeed(
 
 function BaseDiamond({ bases }: { bases: BaseState }) {
   const baseClass =
-    "absolute h-5 w-5 rotate-45 rounded-[3px] border-2 transition-colors";
+    "absolute h-6 w-6 rotate-45 rounded-[3px] border-2 transition-colors";
   const occupiedClass = "border-[#dcff00] bg-[#dcff00]";
   const emptyClass = "border-[#65717d] bg-[#191b1f]";
 
   return (
-    <div aria-label="Base state" className="relative h-11 w-16 shrink-0">
+    <div aria-label="Base state" className="relative h-14 w-20 shrink-0">
       <span
-        className={`${baseClass} left-[40px] top-[19px] ${
+        className={`${baseClass} left-[50px] top-[26px] ${
           bases.first ? occupiedClass : emptyClass
         }`}
       />
       <span
-        className={`${baseClass} left-[22px] top-[1px] ${
+        className={`${baseClass} left-[28px] top-[4px] ${
           bases.second ? occupiedClass : emptyClass
         }`}
       />
       <span
-        className={`${baseClass} left-[4px] top-[19px] ${
+        className={`${baseClass} left-[6px] top-[26px] ${
           bases.third ? occupiedClass : emptyClass
         }`}
       />
@@ -548,7 +556,7 @@ function ScoreBugTeam({
 
   return (
     <div
-      className={`flex h-12 min-w-0 items-center gap-2.5 border-l border-[#3d454e] px-3 first:border-l-0 sm:px-4 ${
+      className={`flex h-14 min-w-0 items-center gap-3 border-l border-[#3d454e] px-3 first:border-l-0 sm:px-4 ${
         batting ? "bg-[#2d3329]" : ""
       }`}
     >
@@ -558,20 +566,20 @@ function ScoreBugTeam({
       {logoUrl && (
         <span
           aria-hidden="true"
-          className="h-8 w-8 shrink-0 bg-center bg-contain bg-no-repeat"
+          className="h-9 w-9 shrink-0 bg-center bg-contain bg-no-repeat"
           style={{
             backgroundImage: `url("${logoUrl}")`,
           }}
         />
       )}
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-[#f6f7f2]">
+        <p className="truncate text-lg font-semibold text-[#f6f7f2]">
           {team.abbreviation}
         </p>
       </div>
       <AnimatedNumber
         value={team.score}
-        className="shrink-0 text-2xl font-semibold text-[#f6f7f2]"
+        className="shrink-0 text-3xl font-semibold leading-none text-[#f6f7f2]"
       />
     </div>
   );
@@ -580,8 +588,9 @@ function ScoreBugTeam({
 function ScoreBug({ feed }: { feed: LiveGameResponse }) {
   const topHalf = feed.inningState.toLowerCase().startsWith("top");
   const bottomHalf = feed.inningState.toLowerCase().startsWith("bottom");
-  const currentCount = countLabel(feed.balls, feed.strikes, feed.outs);
+  const currentCount = countLabel(feed.balls, feed.strikes);
   const currentInning = inningLabel(feed);
+  const currentOuts = outsLabel(feed.outs);
 
   return (
     <section className="overflow-hidden rounded-lg border border-[#3d454e] bg-[#23272d] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
@@ -591,7 +600,7 @@ function ScoreBug({ feed }: { feed: LiveGameResponse }) {
           <ScoreBugTeam team={feed.home} batting={bottomHalf} />
         </div>
 
-        <div className="grid min-h-14 grid-cols-[5.75rem_minmax(5.25rem,auto)_minmax(0,1fr)] border-t border-[#3d454e] sm:grid-cols-[7rem_minmax(7rem,auto)_minmax(0,1fr)]">
+        <div className="grid min-h-16 grid-cols-[6.9rem_6rem_minmax(0,1fr)] border-t border-[#3d454e] sm:grid-cols-[8.25rem_7rem_minmax(0,1fr)]">
           <div className="flex items-center justify-center border-r border-[#3d454e] px-2">
             <BaseDiamond bases={feed.bases} />
           </div>
@@ -601,21 +610,24 @@ function ScoreBug({ feed }: { feed: LiveGameResponse }) {
             </p>
             <ChangePulse
               value={currentCount}
-              className="mt-1 text-sm font-semibold text-[#f6f7f2]"
+              className="mt-0.5 text-2xl font-semibold leading-none text-[#f6f7f2]"
             >
               {currentCount}
             </ChangePulse>
           </div>
-          <div className="flex min-w-0 items-center justify-between gap-3 px-3 py-2">
+          <div className="flex min-w-0 items-center justify-between gap-3 px-4 py-2">
             <ChangePulse
               value={currentInning}
-              className="truncate text-sm font-semibold text-[#dcff00]"
+              className="truncate text-lg font-semibold text-[#dcff00]"
             >
               {currentInning}
             </ChangePulse>
-            <p className="truncate text-xs font-medium text-[#87919c]">
-              {feed.status.detailedState}
-            </p>
+            <ChangePulse
+              value={currentOuts}
+              className="shrink-0 text-lg font-semibold text-[#f6f7f2]"
+            >
+              {currentOuts}
+            </ChangePulse>
           </div>
         </div>
       </div>
@@ -633,38 +645,24 @@ function BatterMatchup({
   const batterName = atBat?.batter ?? pendingPrediction?.batter;
   const pitcherName = atBat?.pitcher ?? pendingPrediction?.pitcher;
   const batterLineupSpot = lineupSpotLabel(atBat?.batterLineupSpot);
-  const matchupStatus = atBat
-    ? `${countLabel(atBat.balls, atBat.strikes, atBat.outs)} | ${lockTimingLabel(
-        atBat.pitchCount
-      )}`
-    : pendingPrediction
-      ? "Waiting for the official result"
-      : "No active PA in the feed";
 
   return (
-    <div className="rounded-lg border border-[#3d454e] bg-[#23272d] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs font-semibold uppercase text-[#87919c]">
-          Current Matchup
-        </p>
-        <ChangePulse
-          value={matchupStatus}
-          className="text-xs font-medium text-[#aeb6bf] sm:text-sm"
-        >
-          {matchupStatus}
-        </ChangePulse>
-      </div>
-
+    <div className="rounded-lg border border-[#3d454e] bg-[#23272d] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:p-5">
       {batterName && pitcherName ? (
-        <div className="mt-3 grid grid-cols-2 gap-3 border-t border-[#3d454e] pt-3 sm:gap-4">
+        <div className="grid grid-cols-2 gap-4 sm:gap-6">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase text-[#87919c]">
-              Batter{batterLineupSpot ? ` ${batterLineupSpot}` : ""}
+              Batter
             </p>
-            <h2 className="mt-1 break-words text-lg font-semibold leading-snug text-[#f6f7f2] sm:text-2xl">
+            <h2 className="mt-2 break-words text-xl font-semibold leading-tight text-[#f6f7f2] sm:text-3xl">
               {batterName}
+              {batterLineupSpot && (
+                <span className="ml-2 text-base font-semibold text-[#87919c] sm:text-xl">
+                  {batterLineupSpot}
+                </span>
+              )}
             </h2>
-            <div className="mt-2 grid gap-0.5 text-xs font-medium text-[#aeb6bf] sm:text-sm">
+            <div className="mt-3 grid gap-1 text-sm font-medium leading-snug text-[#aeb6bf] sm:text-base">
               <p>
                 <span className="text-[#87919c]">Slash</span>{" "}
                 {atBat?.batterSummary?.slashLine || "--/--/--"}
@@ -676,14 +674,14 @@ function BatterMatchup({
             </div>
           </div>
 
-          <div className="min-w-0 border-l border-[#3d454e] pl-3 sm:pl-4">
+          <div className="min-w-0 border-l border-[#3d454e] pl-4 sm:pl-6">
             <p className="text-xs font-semibold uppercase text-[#87919c]">
               Pitcher
             </p>
-            <h2 className="mt-1 break-words text-lg font-semibold leading-snug text-[#f6f7f2] sm:text-2xl">
+            <h2 className="mt-2 break-words text-xl font-semibold leading-tight text-[#f6f7f2] sm:text-3xl">
               {pitcherName}
             </h2>
-            <div className="mt-2 grid gap-0.5 text-xs font-medium text-[#aeb6bf] sm:text-sm">
+            <div className="mt-3 grid gap-1 text-sm font-medium leading-snug text-[#aeb6bf] sm:text-base">
               <p>
                 <span className="text-[#87919c]">Season</span>{" "}
                 {atBat?.pitcherSummary?.seasonLine || "-- ERA / -- WHIP"}
@@ -696,9 +694,19 @@ function BatterMatchup({
           </div>
         </div>
       ) : (
-        <h2 className="mt-2 text-xl font-semibold leading-tight text-[#f6f7f2] sm:text-2xl">
-          Waiting for the next plate appearance
-        </h2>
+        <div>
+          <p className="text-xs font-semibold uppercase text-[#87919c]">
+            Matchup
+          </p>
+          <h2 className="mt-2 text-xl font-semibold leading-tight text-[#f6f7f2] sm:text-2xl">
+            Waiting for the next plate appearance
+          </h2>
+          <p className="mt-2 text-sm font-medium text-[#aeb6bf]">
+            {pendingPrediction
+              ? "Waiting for the official result"
+              : "No active PA in the feed"}
+          </p>
+        </div>
       )}
     </div>
   );
@@ -1301,6 +1309,8 @@ export default function LiveGameClient({ gamePk }: { gamePk: string }) {
     storageLoaded,
     handleFeedUpdate
   );
+  const countPulseValue = feed ? countLabel(feed.balls, feed.strikes) : null;
+  const pageCountPulse = useChangePulse(countPulseValue, 760);
 
   const activeAtBat =
     activeAtBatFromFeed(feed);
@@ -1347,7 +1357,12 @@ export default function LiveGameClient({ gamePk }: { gamePk: string }) {
   }
 
   return (
-    <main className="min-h-screen overflow-x-clip bg-[#191b1f] px-4 pb-28 pt-5 text-[#f6f7f2] sm:px-6 sm:pb-24 sm:pt-7">
+    <main
+      className={classNames(
+        "min-h-screen overflow-x-clip bg-[#191b1f] px-4 pb-28 pt-5 text-[#f6f7f2] sm:px-6 sm:pb-24 sm:pt-7",
+        pageCountPulse && "live-page-count-pulse"
+      )}
+    >
       <section className="mx-auto flex w-full max-w-7xl flex-col gap-5">
         <header className="flex flex-col gap-4 border-b border-[#3d454e] pb-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
