@@ -30,6 +30,7 @@ const POLL_INTERVAL_MS = 2000;
 const STORAGE_VERSION = 2;
 const MAX_STORED_APPEARANCES = 140;
 const RECENT_COLLAPSED_COUNT = 2;
+const RESULT_FLASH_MS = 2600;
 
 type PendingPrediction = {
   atBatIndex: number;
@@ -49,6 +50,12 @@ type ScoredPrediction = {
   timingBonus: number;
   totalScore: number;
   lockedAt: string;
+};
+
+type ResultFlash = {
+  id: string;
+  appearance: LivePlateAppearance;
+  scoredPrediction: ScoredPrediction | null;
 };
 
 type SelectedOutcome = {
@@ -908,6 +915,76 @@ function ScoreFooter({
   );
 }
 
+function ResultFlashCard({ flash }: { flash: ResultFlash | null }) {
+  if (!flash) {
+    return null;
+  }
+
+  const actualLabel = describePlateEvent(
+    flash.appearance.eventType,
+    flash.appearance.result
+  );
+  const batterOrder = lineupSpotLabel(flash.appearance.batterLineupSpot);
+  const result = flash.scoredPrediction;
+  const predictedLabel = result
+    ? getPlateOutcomeOption(result.predictedOutcome).label
+    : "";
+  const pointsLabel = result
+    ? result.totalScore > 0
+      ? `+${result.totalScore}`
+      : "0"
+    : "+0";
+  const verdict = result
+    ? result.predictedOutcome === flash.appearance.outcome
+      ? "Correct call"
+      : result.totalScore > 0
+        ? "Partial credit"
+        : "No points"
+    : "No call";
+
+  return (
+    <div
+      aria-live="polite"
+      className="pointer-events-none fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-40 px-3 sm:bottom-20 sm:px-5"
+    >
+      <div
+        key={flash.id}
+        className="result-flash-card mx-auto max-w-xl rounded-lg border border-[#dcff00] bg-[#23272d] p-3 text-[#f6f7f2] shadow-[0_18px_48px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(255,255,255,0.08)]"
+      >
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase text-[#dcff00]">
+              PA Complete
+            </p>
+            <p className="mt-1 truncate text-base font-semibold leading-tight sm:text-lg">
+              {batterOrder ? `${batterOrder} ` : ""}
+              {flash.appearance.batter}: {actualLabel}
+            </p>
+            <p className="mt-1 truncate text-xs font-medium text-[#aeb6bf] sm:text-sm">
+              {result ? `Your call: ${predictedLabel} | ${verdict}` : "No call made"}
+            </p>
+          </div>
+          <div className="shrink-0 text-right">
+            <p
+              className={classNames(
+                "text-3xl font-semibold leading-none",
+                !result || result.totalScore === 0
+                  ? "text-[#aeb6bf]"
+                  : "text-[#dcff00]"
+              )}
+            >
+              {pointsLabel}
+            </p>
+            <p className="mt-0.5 text-[11px] font-semibold uppercase text-[#87919c]">
+              points
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RecentPlaysPanel({
   results,
   appearances,
@@ -1038,7 +1115,11 @@ export default function LiveGameClient({ gamePk }: { gamePk: string }) {
     useState<PendingPrediction | null>(null);
   const [results, setResults] = useState<ScoredPrediction[]>([]);
   const [appearances, setAppearances] = useState<LivePlateAppearance[]>([]);
+  const [resultFlash, setResultFlash] = useState<ResultFlash | null>(null);
   const pendingPredictionRef = useRef<PendingPrediction | null>(null);
+  const seenAppearanceKeysRef = useRef<Set<string>>(new Set());
+  const hasProcessedFeedRef = useRef(false);
+  const resultFlashTimerRef = useRef<number | null>(null);
 
   const updatePendingPrediction = useCallback(
     (nextPrediction: PendingPrediction | null) => {
@@ -1048,13 +1129,50 @@ export default function LiveGameClient({ gamePk }: { gamePk: string }) {
     []
   );
 
+  const showResultFlash = useCallback(
+    (
+      appearance: LivePlateAppearance,
+      scoredPrediction: ScoredPrediction | null
+    ) => {
+      if (resultFlashTimerRef.current !== null) {
+        window.clearTimeout(resultFlashTimerRef.current);
+      }
+
+      setResultFlash({
+        id: `${appearance.key}-${Date.now()}`,
+        appearance,
+        scoredPrediction,
+      });
+
+      resultFlashTimerRef.current = window.setTimeout(() => {
+        setResultFlash(null);
+        resultFlashTimerRef.current = null;
+      }, RESULT_FLASH_MS);
+    },
+    []
+  );
+
+  useEffect(() => {
+    return () => {
+      if (resultFlashTimerRef.current !== null) {
+        window.clearTimeout(resultFlashTimerRef.current);
+      }
+    };
+  }, []);
+
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const storedState = readStoredGameState(gamePk);
+      const storedAppearances = storedState?.appearances ?? [];
 
       setSelectedOutcome(null);
       setResults(storedState?.results ?? []);
-      setAppearances(storedState?.appearances ?? []);
+      setAppearances(storedAppearances);
+      setResultFlash(null);
+      seenAppearanceKeysRef.current = new Set(
+        storedAppearances.map((appearance) => appearance.key)
+      );
+      hasProcessedFeedRef.current = false;
       updatePendingPrediction(storedState?.pendingPrediction ?? null);
       setStorageLoaded(true);
     }, 0);
@@ -1078,6 +1196,10 @@ export default function LiveGameClient({ gamePk }: { gamePk: string }) {
   const handleFeedUpdate = useCallback(
     (nextFeed: LiveGameResponse) => {
       const nextActiveAtBat = activeAtBatFromFeed(nextFeed);
+      const hasProcessedFeed = hasProcessedFeedRef.current;
+      const newCompletedAppearances = nextFeed.completedPlateAppearances.filter(
+        (appearance) => !seenAppearanceKeysRef.current.has(appearance.key)
+      );
 
       setSelectedOutcome((currentSelection) => {
         if (
@@ -1099,63 +1221,79 @@ export default function LiveGameClient({ gamePk }: { gamePk: string }) {
       );
 
       const activePrediction = pendingPredictionRef.current;
+      let flashedScoredPrediction: ScoredPrediction | null = null;
 
-      if (!activePrediction) {
-        return;
-      }
+      if (activePrediction) {
+        const completedAppearance = nextFeed.completedPlateAppearances.find(
+          (appearance) => appearance.atBatIndex === activePrediction.atBatIndex
+        );
 
-      const completedAppearance = nextFeed.completedPlateAppearances.find(
-        (appearance) => appearance.atBatIndex === activePrediction.atBatIndex
-      );
+        if (completedAppearance) {
+          const score = scorePlatePrediction({
+            predictedOutcome: activePrediction.predictedOutcome,
+            actualOutcome: completedAppearance.outcome,
+            pitchCountAtLock: activePrediction.pitchCountAtLock,
+          });
 
-      if (!completedAppearance) {
-        const feedAdvancedPastPrediction =
-          nextFeed.completedPlateAppearances.some(
-            (appearance) => appearance.atBatIndex > activePrediction.atBatIndex
-          ) ||
-          Boolean(
-            nextActiveAtBat &&
-              (nextActiveAtBat.atBatIndex !== activePrediction.atBatIndex ||
-                nextActiveAtBat.batter !== activePrediction.batter ||
-                nextActiveAtBat.pitcher !== activePrediction.pitcher)
-          );
+          const scoredPrediction: ScoredPrediction = {
+            id: completedAppearance.key,
+            appearance: completedAppearance,
+            predictedOutcome: activePrediction.predictedOutcome,
+            pitchCountAtLock: activePrediction.pitchCountAtLock,
+            baseScore: score.baseScore,
+            timingBonus: score.timingBonus,
+            totalScore: score.totalScore,
+            lockedAt: activePrediction.lockedAt,
+          };
 
-        if (feedAdvancedPastPrediction) {
+          flashedScoredPrediction = scoredPrediction;
+
+          setResults((currentResults) => {
+            if (
+              currentResults.some((result) => result.id === scoredPrediction.id)
+            ) {
+              return currentResults;
+            }
+
+            return [...currentResults, scoredPrediction];
+          });
           updatePendingPrediction(null);
           setSelectedOutcome(null);
-        }
+          showResultFlash(completedAppearance, scoredPrediction);
+        } else {
+          const feedAdvancedPastPrediction =
+            nextFeed.completedPlateAppearances.some(
+              (appearance) => appearance.atBatIndex > activePrediction.atBatIndex
+            ) ||
+            Boolean(
+              nextActiveAtBat &&
+                (nextActiveAtBat.atBatIndex !== activePrediction.atBatIndex ||
+                  nextActiveAtBat.batter !== activePrediction.batter ||
+                  nextActiveAtBat.pitcher !== activePrediction.pitcher)
+            );
 
-        return;
+          if (feedAdvancedPastPrediction) {
+            updatePendingPrediction(null);
+            setSelectedOutcome(null);
+          }
+        }
       }
 
-      const score = scorePlatePrediction({
-        predictedOutcome: activePrediction.predictedOutcome,
-        actualOutcome: completedAppearance.outcome,
-        pitchCountAtLock: activePrediction.pitchCountAtLock,
-      });
+      if (!flashedScoredPrediction && hasProcessedFeed) {
+        const latestNewAppearance =
+          newCompletedAppearances[newCompletedAppearances.length - 1] ?? null;
 
-      const scoredPrediction: ScoredPrediction = {
-        id: completedAppearance.key,
-        appearance: completedAppearance,
-        predictedOutcome: activePrediction.predictedOutcome,
-        pitchCountAtLock: activePrediction.pitchCountAtLock,
-        baseScore: score.baseScore,
-        timingBonus: score.timingBonus,
-        totalScore: score.totalScore,
-        lockedAt: activePrediction.lockedAt,
-      };
-
-      setResults((currentResults) => {
-        if (currentResults.some((result) => result.id === scoredPrediction.id)) {
-          return currentResults;
+        if (latestNewAppearance) {
+          showResultFlash(latestNewAppearance, null);
         }
+      }
 
-        return [...currentResults, scoredPrediction];
+      nextFeed.completedPlateAppearances.forEach((appearance) => {
+        seenAppearanceKeysRef.current.add(appearance.key);
       });
-      updatePendingPrediction(null);
-      setSelectedOutcome(null);
+      hasProcessedFeedRef.current = true;
     },
-    [updatePendingPrediction]
+    [showResultFlash, updatePendingPrediction]
   );
 
   const { feed, loading, error, refresh, checkedAt } = useLiveFeed(
@@ -1303,6 +1441,7 @@ export default function LiveGameClient({ gamePk }: { gamePk: string }) {
               />
             </div>
 
+            <ResultFlashCard flash={resultFlash} />
             <ScoreFooter results={results} appearances={appearances} />
           </>
         )}
