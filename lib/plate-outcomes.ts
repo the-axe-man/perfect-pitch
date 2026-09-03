@@ -98,8 +98,51 @@ function normalizeEventType(eventType: string) {
   return eventType.trim().toLowerCase().replaceAll(" ", "_");
 }
 
+function titleCaseEventType(eventType: string) {
+  return eventType
+    .split("_")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
 export function getPlateOutcomeOption(id: PlateOutcomeId) {
   return outcomeLookup.get(id) ?? PLATE_OUTCOME_OPTIONS[0];
+}
+
+export function describePlateEvent(eventType: string, fallback = "") {
+  const normalizedType = normalizeEventType(eventType);
+
+  const labels: Record<string, string> = {
+    batter_interference: "Batter Interference",
+    catcher_interf: "Catcher Interference",
+    caught_stealing: "Caught Stealing",
+    double: "Double",
+    double_play: "Double Play",
+    fan_interference: "Fan Interference",
+    field_error: "Reached on Error",
+    field_out: "Out in Play",
+    fielders_choice: "Fielder's Choice",
+    fielders_choice_out: "Fielder's Choice Out",
+    force_out: "Force Out",
+    grounded_into_double_play: "Grounded Into Double Play",
+    hit_by_pitch: "Hit By Pitch",
+    home_run: "Home Run",
+    intent_walk: "Intentional Walk",
+    pickoff_caught_stealing: "Pickoff Caught Stealing",
+    sac_bunt: "Sac Bunt",
+    sac_bunt_double_play: "Sac Bunt Double Play",
+    sac_fly: "Sac Fly",
+    sac_fly_double_play: "Sac Fly Double Play",
+    single: "Single",
+    strikeout: "Strikeout",
+    strikeout_double_play: "Strikeout Double Play",
+    triple: "Triple",
+    triple_play: "Triple Play",
+    walk: "Walk",
+  };
+
+  return labels[normalizedType] ?? fallback.trim() ?? titleCaseEventType(normalizedType);
 }
 
 export function categorizePlateOutcome(eventType: string): PlateOutcomeId {

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   PLATE_OUTCOME_OPTIONS,
+  describePlateEvent,
   getPlateOutcomeOption,
   scorePlatePrediction,
   timingBonusForPitchCount,
@@ -19,6 +20,8 @@ import type {
 } from "@/lib/mlb-live";
 
 const POLL_INTERVAL_MS = 2000;
+const STORAGE_VERSION = 1;
+const MAX_STORED_APPEARANCES = 140;
 
 type PendingPrediction = {
   atBatIndex: number;
@@ -44,6 +47,140 @@ type SelectedOutcome = {
   atBatIndex: number;
   outcome: PlateOutcomeId;
 };
+
+type StoredGameState = {
+  version: typeof STORAGE_VERSION;
+  pendingPrediction: PendingPrediction | null;
+  results: ScoredPrediction[];
+  appearances: LivePlateAppearance[];
+};
+
+function storageKey(gamePk: string) {
+  return `shot-caller:game:${gamePk}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+const outcomeIds = new Set<PlateOutcomeId>(
+  PLATE_OUTCOME_OPTIONS.map((option) => option.id)
+);
+
+function isPlateOutcomeId(value: unknown): value is PlateOutcomeId {
+  return typeof value === "string" && outcomeIds.has(value as PlateOutcomeId);
+}
+
+function isStoredAppearance(value: unknown): value is LivePlateAppearance {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.key === "string" &&
+    typeof value.atBatIndex === "number" &&
+    typeof value.batter === "string" &&
+    typeof value.pitcher === "string" &&
+    typeof value.eventType === "string" &&
+    isPlateOutcomeId(value.outcome)
+  );
+}
+
+function isStoredPrediction(value: unknown): value is PendingPrediction {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.atBatIndex === "number" &&
+    typeof value.batter === "string" &&
+    typeof value.pitcher === "string" &&
+    isPlateOutcomeId(value.predictedOutcome) &&
+    typeof value.pitchCountAtLock === "number" &&
+    typeof value.lockedAt === "string"
+  );
+}
+
+function isStoredResult(value: unknown): value is ScoredPrediction {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.id === "string" &&
+    isStoredAppearance(value.appearance) &&
+    isPlateOutcomeId(value.predictedOutcome) &&
+    typeof value.pitchCountAtLock === "number" &&
+    typeof value.baseScore === "number" &&
+    typeof value.timingBonus === "number" &&
+    typeof value.totalScore === "number" &&
+    typeof value.lockedAt === "string"
+  );
+}
+
+function readStoredGameState(gamePk: string): StoredGameState | null {
+  try {
+    const rawState = window.localStorage.getItem(storageKey(gamePk));
+
+    if (!rawState) {
+      return null;
+    }
+
+    const parsedState = JSON.parse(rawState) as unknown;
+
+    if (!isRecord(parsedState) || parsedState.version !== STORAGE_VERSION) {
+      return null;
+    }
+
+    const appearances = Array.isArray(parsedState.appearances)
+      ? parsedState.appearances.filter(isStoredAppearance)
+      : [];
+    const results = Array.isArray(parsedState.results)
+      ? parsedState.results.filter(isStoredResult)
+      : [];
+    const pendingPrediction = isStoredPrediction(parsedState.pendingPrediction)
+      ? parsedState.pendingPrediction
+      : null;
+
+    return {
+      version: STORAGE_VERSION,
+      pendingPrediction,
+      appearances,
+      results,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredGameState(gamePk: string, state: StoredGameState) {
+  try {
+    window.localStorage.setItem(storageKey(gamePk), JSON.stringify(state));
+  } catch {
+    // Storage can fail in private browsing or when a device is out of quota.
+  }
+}
+
+function mergePlateAppearances(
+  currentAppearances: LivePlateAppearance[],
+  nextAppearances: LivePlateAppearance[]
+) {
+  const byKey = new Map<string, LivePlateAppearance>();
+
+  currentAppearances.forEach((appearance) => {
+    byKey.set(appearance.key, appearance);
+  });
+
+  nextAppearances.forEach((appearance) => {
+    byKey.set(appearance.key, appearance);
+  });
+
+  return [...byKey.values()]
+    .sort((firstAppearance, secondAppearance) => {
+      return firstAppearance.atBatIndex - secondAppearance.atBatIndex;
+    })
+    .slice(-MAX_STORED_APPEARANCES);
+}
 
 function countLabel(balls: number | null, strikes: number | null, outs: number | null) {
   return `${balls ?? "-"}-${strikes ?? "-"}, ${outs ?? "-"} out`;
@@ -97,6 +234,7 @@ function currentStreak(results: ScoredPrediction[]) {
 
 function useLiveFeed(
   gamePk: string,
+  enabled: boolean,
   onFeedUpdate: (feed: LiveGameResponse) => void
 ) {
   const [feed, setFeed] = useState<LiveGameResponse | null>(null);
@@ -159,20 +297,28 @@ function useLiveFeed(
   );
 
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
     const timer = window.setTimeout(() => {
       void loadFeed();
     }, 0);
 
     return () => window.clearTimeout(timer);
-  }, [loadFeed]);
+  }, [enabled, loadFeed]);
 
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
     const timer = window.setInterval(() => {
       void loadFeed();
     }, POLL_INTERVAL_MS);
 
     return () => window.clearInterval(timer);
-  }, [loadFeed]);
+  }, [enabled, loadFeed]);
 
   return {
     feed,
@@ -284,30 +430,69 @@ function BatterMatchup({
   atBat: CurrentAtBat | null;
   pendingPrediction: PendingPrediction | null;
 }) {
-  const title = atBat
-    ? `${atBat.batter} vs ${atBat.pitcher}`
-    : pendingPrediction
-      ? `${pendingPrediction.batter} vs ${pendingPrediction.pitcher}`
-      : "Waiting for the next plate appearance";
+  const batterName = atBat?.batter ?? pendingPrediction?.batter;
+  const pitcherName = atBat?.pitcher ?? pendingPrediction?.pitcher;
 
   return (
-    <div className="min-h-[156px] rounded-lg border border-[#3d454e] bg-[#23272d] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-      <div className="max-w-[44rem]">
-        <p className="text-xs font-semibold uppercase text-[#87919c]">
-          Current Matchup
-        </p>
-        <h2 className="mt-2 text-3xl font-semibold leading-tight text-[#f6f7f2] sm:text-4xl">
-          {title}
+    <div className="rounded-lg border border-[#3d454e] bg-[#23272d] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:p-5">
+      <p className="text-xs font-semibold uppercase text-[#87919c]">
+        Current Matchup
+      </p>
+
+      {batterName && pitcherName ? (
+        <div className="mt-3 grid gap-4 border-t border-[#3d454e] pt-3 md:grid-cols-2 md:gap-6">
+          <div>
+            <p className="text-xs font-semibold uppercase text-[#87919c]">
+              Batter
+            </p>
+            <h2 className="mt-1 text-2xl font-semibold leading-tight text-[#f6f7f2] sm:text-3xl">
+              {batterName}
+            </h2>
+            <div className="mt-3 grid gap-1 text-sm font-medium text-[#aeb6bf]">
+              <p>
+                <span className="text-[#87919c]">Slash</span>{" "}
+                {atBat?.batterSummary?.slashLine || "--/--/--"}
+              </p>
+              <p>
+                <span className="text-[#87919c]">Today</span>{" "}
+                {atBat?.batterSummary?.today || "No results yet"}
+              </p>
+            </div>
+          </div>
+
+          <div className="border-t border-[#3d454e] pt-3 md:border-l md:border-t-0 md:pl-6 md:pt-0">
+            <p className="text-xs font-semibold uppercase text-[#87919c]">
+              Pitcher
+            </p>
+            <h2 className="mt-1 text-2xl font-semibold leading-tight text-[#f6f7f2] sm:text-3xl">
+              {pitcherName}
+            </h2>
+            <div className="mt-3 grid gap-1 text-sm font-medium text-[#aeb6bf]">
+              <p>
+                <span className="text-[#87919c]">Season</span>{" "}
+                {atBat?.pitcherSummary?.seasonLine || "-- ERA / -- WHIP"}
+              </p>
+              <p>
+                <span className="text-[#87919c]">Today</span>{" "}
+                {atBat?.pitcherSummary?.today || "No line yet"}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <h2 className="mt-2 text-2xl font-semibold leading-tight text-[#f6f7f2] sm:text-3xl">
+          Waiting for the next plate appearance
         </h2>
-        <p className="mt-3 text-sm font-medium text-[#aeb6bf]">
-          {atBat
-            ? `${countLabel(atBat.balls, atBat.strikes, atBat.outs)} | ${lockTimingLabel(
-                atBat.pitchCount
-              )}`
-            : pendingPrediction
-              ? "Waiting for the official result"
-              : "No active PA in the feed"}
-        </p>
+      )}
+
+      <div className="mt-3 text-sm font-medium text-[#aeb6bf]">
+        {atBat
+          ? `${countLabel(atBat.balls, atBat.strikes, atBat.outs)} | ${lockTimingLabel(
+              atBat.pitchCount
+            )}`
+          : pendingPrediction
+            ? "Waiting for the official result"
+            : "No active PA in the feed"}
       </div>
     </div>
   );
@@ -317,42 +502,61 @@ function OutcomeButton({
   outcomeId,
   selected,
   disabled,
+  availableScore,
   onSelect,
+  onLock,
 }: {
   outcomeId: PlateOutcomeId;
   selected: boolean;
   disabled: boolean;
+  availableScore: number;
   onSelect: (outcomeId: PlateOutcomeId) => void;
+  onLock: () => void;
 }) {
   const outcome = getPlateOutcomeOption(outcomeId);
 
   return (
     <button
       disabled={disabled}
-      onClick={() => onSelect(outcomeId)}
-      className={`grid min-h-[96px] rounded-lg border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-45 ${
+      aria-label={
+        selected ? `Lock ${outcome.label}` : `Select ${outcome.label}`
+      }
+      onClick={() => {
+        if (selected) {
+          onLock();
+          return;
+        }
+
+        onSelect(outcomeId);
+      }}
+      className={`relative min-h-[76px] rounded-lg border p-2.5 text-left transition disabled:cursor-not-allowed disabled:opacity-45 sm:min-h-[84px] sm:p-3 ${
         selected
-          ? "border-[#dcff00] bg-[#dcff00] text-[#17191b] shadow-[0_4px_0_#8ea500]"
+          ? "border-[#dcff00] bg-[#dcff00] pb-10 text-[#17191b] shadow-[0_4px_0_#8ea500]"
           : "border-[#3d454e] bg-[#191b1f] text-[#f6f7f2] hover:border-[#5c6670] hover:bg-[#272c33]"
       }`}
     >
-      <span
-        className={`text-xs font-semibold uppercase ${
-          selected ? "text-[#394100]" : "text-[#87919c]"
-        }`}
-      >
-        {outcome.shortLabel}
+      <span className="flex items-center justify-between gap-2">
+        <span
+          className={`text-xs font-semibold uppercase ${
+            selected ? "text-[#394100]" : "text-[#87919c]"
+          }`}
+        >
+          {outcome.shortLabel}
+        </span>
+        {!selected && (
+          <span className="text-xs font-semibold text-[#aeb6bf]">
+            {outcome.basePoints} pts
+          </span>
+        )}
       </span>
-      <span className="mt-1 text-lg font-semibold leading-tight">
+      <span className="mt-1 text-base font-semibold leading-tight sm:text-lg">
         {outcome.label}
       </span>
-      <span
-        className={`mt-3 text-sm font-medium ${
-          selected ? "text-[#394100]" : "text-[#aeb6bf]"
-        }`}
-      >
-        {outcome.basePoints} pts
-      </span>
+      {selected && (
+        <span className="absolute bottom-2 left-2 right-2 rounded-md bg-[#17191b] px-2 py-1 text-center text-sm font-semibold text-[#dcff00]">
+          Lock +{availableScore}
+        </span>
+      )}
     </button>
   );
 }
@@ -370,74 +574,48 @@ function PredictionConsole({
   onSelectOutcome: (outcomeId: PlateOutcomeId) => void;
   onLock: () => void;
 }) {
-  const selectedOption = selectedOutcome
-    ? getPlateOutcomeOption(selectedOutcome)
-    : null;
   const timingBonus = atBat ? timingBonusForPitchCount(atBat.pitchCount) : 0;
   const disabled = !atBat || Boolean(pendingPrediction);
 
   return (
-    <section className="rounded-lg border border-[#3d454e] bg-[#23272d] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+    <section className="rounded-lg border border-[#3d454e] bg-[#23272d] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase text-[#87919c]">
             Make The Call
           </p>
-          <h3 className="mt-2 text-2xl font-semibold text-[#f6f7f2]">
+          <h3 className="mt-2 text-xl font-semibold text-[#f6f7f2] sm:text-2xl">
             Pick this PA result
           </h3>
         </div>
-        <p className="text-sm font-medium text-[#aeb6bf]">
-          Early bonus:{" "}
-          <span className="font-semibold text-[#dcff00]">+{timingBonus}</span>
-        </p>
+        {pendingPrediction ? (
+          <div className="text-sm font-medium text-[#aeb6bf] sm:text-right">
+            <p className="font-semibold text-[#dcff00]">
+              Locked:{" "}
+              {getPlateOutcomeOption(pendingPrediction.predictedOutcome).label}
+            </p>
+            <p>{lockTimingLabel(pendingPrediction.pitchCountAtLock)}</p>
+          </div>
+        ) : (
+          <p className="text-sm font-medium text-[#aeb6bf]">
+            Early bonus:{" "}
+            <span className="font-semibold text-[#dcff00]">+{timingBonus}</span>
+          </p>
+        )}
       </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
         {PLATE_OUTCOME_OPTIONS.map((outcome) => (
           <OutcomeButton
             key={outcome.id}
             outcomeId={outcome.id}
             selected={selectedOutcome === outcome.id}
             disabled={disabled}
+            availableScore={outcome.basePoints + timingBonus}
             onSelect={onSelectOutcome}
+            onLock={onLock}
           />
         ))}
-      </div>
-
-      <div className="mt-5 flex min-h-[64px] flex-col justify-center gap-3 border-t border-[#3d454e] pt-4 sm:flex-row sm:items-center sm:justify-between">
-        {pendingPrediction ? (
-          <div>
-            <p className="font-semibold text-[#dcff00]">
-              Locked:{" "}
-              {getPlateOutcomeOption(pendingPrediction.predictedOutcome).label}
-            </p>
-            <p className="mt-1 text-sm text-[#aeb6bf]">
-              {lockTimingLabel(pendingPrediction.pitchCountAtLock)}
-            </p>
-          </div>
-        ) : selectedOption ? (
-          <div>
-            <p className="font-semibold text-[#f6f7f2]">
-              {selectedOption.label}
-            </p>
-            <p className="mt-1 text-sm text-[#aeb6bf]">
-              {selectedOption.basePoints + timingBonus} available
-            </p>
-          </div>
-        ) : (
-          <p className="text-sm text-[#aeb6bf]">
-            {atBat ? "No call selected" : "No active PA"}
-          </p>
-        )}
-
-        <button
-          disabled={!atBat || !selectedOutcome || Boolean(pendingPrediction)}
-          onClick={onLock}
-          className="h-12 rounded-lg bg-[#dcff00] px-6 font-semibold text-[#17191b] shadow-[0_4px_0_#8ea500] transition hover:bg-[#c8e900] active:translate-y-[3px] active:shadow-[0_1px_0_#8ea500] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[#dcff00]"
-        >
-          Lock Call
-        </button>
       </div>
     </section>
   );
@@ -445,11 +623,11 @@ function PredictionConsole({
 
 function ScoreRail({
   results,
-  lastResult,
+  appearances,
   checkedAt,
 }: {
   results: ScoredPrediction[];
-  lastResult: ScoredPrediction | null;
+  appearances: LivePlateAppearance[];
   checkedAt: string;
 }) {
   const totalScore = results.reduce((sum, result) => sum + result.totalScore, 0);
@@ -459,100 +637,122 @@ function ScoreRail({
   const accuracy =
     results.length === 0 ? 0 : Math.round((correctCalls / results.length) * 100);
   const streak = currentStreak(results);
+  const lastResult = results[results.length - 1] ?? null;
+  const resultByAppearance = new Map(
+    results.map((result) => [result.appearance.key, result])
+  );
+  const recentAppearances = appearances.slice(-8).reverse();
 
   return (
     <aside className="grid gap-4 lg:content-start">
-      <section className="rounded-lg border border-[#3d454e] bg-[#23272d] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-        <p className="text-xs font-semibold uppercase text-[#87919c]">Score</p>
-        <p className="mt-2 text-6xl font-semibold text-[#dcff00]">
-          {totalScore}
-        </p>
-        <div className="mt-4 grid grid-cols-3 gap-3 border-t border-[#3d454e] pt-4 text-sm">
+      <section className="rounded-lg border border-[#3d454e] bg-[#23272d] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:p-5">
+        <div className="flex items-start justify-between gap-4">
           <div>
+            <p className="text-xs font-semibold uppercase text-[#87919c]">
+              Score
+            </p>
+            <p className="mt-1 text-4xl font-semibold leading-none text-[#dcff00] sm:text-6xl">
+              {totalScore}
+            </p>
+          </div>
+          <div className="max-w-[9rem] text-right text-sm">
+            <p className="text-xs font-semibold uppercase text-[#87919c]">
+              Last
+            </p>
+            <p className="mt-1 font-semibold text-[#f6f7f2]">
+              {lastResult ? `+${lastResult.totalScore}` : "--"}
+            </p>
+            <p className="mt-0.5 truncate text-xs text-[#aeb6bf]">
+              {lastResult
+                ? describePlateEvent(
+                    lastResult.appearance.eventType,
+                    lastResult.appearance.result
+                  )
+                : "No call yet"}
+            </p>
+          </div>
+        </div>
+        <div className="mt-3 grid grid-cols-4 gap-2 border-t border-[#3d454e] pt-3 text-sm">
+          <div className="min-w-0">
             <p className="text-[#87919c]">Calls</p>
-            <p className="mt-1 text-2xl font-semibold">{results.length}</p>
+            <p className="mt-1 text-xl font-semibold">{results.length}</p>
           </div>
-          <div>
+          <div className="min-w-0">
             <p className="text-[#87919c]">Right</p>
-            <p className="mt-1 text-2xl font-semibold">{accuracy}%</p>
+            <p className="mt-1 text-xl font-semibold">{accuracy}%</p>
           </div>
-          <div>
+          <div className="min-w-0">
             <p className="text-[#87919c]">Streak</p>
-            <p className="mt-1 text-2xl font-semibold">{streak}</p>
+            <p className="mt-1 text-xl font-semibold">{streak}</p>
+          </div>
+          <div className="min-w-0">
+            <p className="text-[#87919c]">PAs</p>
+            <p className="mt-1 text-xl font-semibold">{appearances.length}</p>
           </div>
         </div>
       </section>
 
-      <section className="rounded-lg border border-[#3d454e] bg-[#23272d] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-        <p className="text-xs font-semibold uppercase text-[#87919c]">
-          Last Call
-        </p>
-        {lastResult ? (
-          <div className="mt-3">
-            <p className="text-2xl font-semibold text-[#f6f7f2]">
-              {getPlateOutcomeOption(lastResult.appearance.outcome).label}
-            </p>
-            <p className="mt-1 text-sm text-[#aeb6bf]">
-              Called{" "}
-              {getPlateOutcomeOption(lastResult.predictedOutcome).label}
-            </p>
-            <div className="mt-4 grid grid-cols-2 gap-3 border-t border-[#3d454e] pt-4 text-sm">
-              <div>
-                <p className="text-[#87919c]">Base</p>
-                <p className="mt-1 text-xl font-semibold">
-                  {lastResult.baseScore}
-                </p>
-              </div>
-              <div>
-                <p className="text-[#87919c]">Bonus</p>
-                <p className="mt-1 text-xl font-semibold">
-                  {lastResult.timingBonus}
-                </p>
-              </div>
-            </div>
-            <p className="mt-4 text-3xl font-semibold text-[#dcff00]">
-              +{lastResult.totalScore}
-            </p>
-          </div>
-        ) : (
-          <p className="mt-3 text-sm text-[#aeb6bf]">No calls scored yet.</p>
-        )}
-      </section>
-
-      <section className="rounded-lg border border-[#3d454e] bg-[#23272d] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+      <section className="rounded-lg border border-[#3d454e] bg-[#23272d] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:p-5">
         <div className="flex items-center justify-between gap-3">
           <p className="text-xs font-semibold uppercase text-[#87919c]">
-            Recent
+            Recent Plays
           </p>
           <p className="text-xs font-medium text-[#87919c]">
             {formatTime(checkedAt)}
           </p>
         </div>
-        <div className="mt-3 grid gap-3">
-          {results
-            .slice(-5)
-            .reverse()
-            .map((result) => (
+        <div className="mt-3 grid gap-2">
+          {recentAppearances.map((appearance) => {
+            const result = resultByAppearance.get(appearance.key) ?? null;
+            const actualLabel = describePlateEvent(
+              appearance.eventType,
+              appearance.result
+            );
+            const detail =
+              appearance.description &&
+              appearance.description !== appearance.result &&
+              appearance.description !== actualLabel
+                ? appearance.description
+                : "";
+
+            return (
               <div
-                key={result.id}
-                className="border-t border-[#3d454e] pt-3 text-sm"
+                key={appearance.key}
+                className="rounded-md border border-[#3d454e] bg-[#191b1f] p-2.5 text-sm sm:p-3"
               >
                 <div className="flex items-center justify-between gap-3">
-                  <p className="font-semibold text-[#f6f7f2]">
-                    {result.appearance.batter}
+                  <p className="min-w-0 truncate font-semibold text-[#f6f7f2]">
+                    {appearance.batter}: {actualLabel}
                   </p>
-                  <p className="font-semibold text-[#dcff00]">
-                    +{result.totalScore}
-                  </p>
+                  {result ? (
+                    <p className="shrink-0 font-semibold text-[#dcff00]">
+                      +{result.totalScore}
+                    </p>
+                  ) : (
+                    <p className="shrink-0 text-xs font-semibold uppercase text-[#87919c]">
+                      No call
+                    </p>
+                  )}
                 </div>
-                <p className="mt-1 text-[#aeb6bf]">
-                  {getPlateOutcomeOption(result.predictedOutcome).shortLabel} /{" "}
-                  {getPlateOutcomeOption(result.appearance.outcome).shortLabel}
+                {detail && (
+                  <p className="mt-1 line-clamp-1 text-xs text-[#87919c] sm:line-clamp-2">
+                    {detail}
+                  </p>
+                )}
+                <p className="mt-2 text-xs text-[#aeb6bf]">
+                  <span className="font-semibold text-[#87919c]">Call:</span>{" "}
+                  {result
+                    ? getPlateOutcomeOption(result.predictedOutcome).label
+                    : "None"}
+                  <span className="mx-2 text-[#5c6670]"> | </span>
+                  <span className="font-semibold text-[#87919c]">Result:</span>{" "}
+                  {actualLabel}
                 </p>
               </div>
-            ))}
-          {!results.length && (
-            <p className="text-sm text-[#aeb6bf]">No scored calls yet.</p>
+            );
+          })}
+          {!recentAppearances.length && (
+            <p className="text-sm text-[#aeb6bf]">No completed PAs yet.</p>
           )}
         </div>
       </section>
@@ -561,13 +761,14 @@ function ScoreRail({
 }
 
 export default function LiveGameClient({ gamePk }: { gamePk: string }) {
+  const [storageLoaded, setStorageLoaded] = useState(false);
   const [selectedOutcome, setSelectedOutcome] = useState<SelectedOutcome | null>(
     null
   );
   const [pendingPrediction, setPendingPrediction] =
     useState<PendingPrediction | null>(null);
-  const [lastResult, setLastResult] = useState<ScoredPrediction | null>(null);
   const [results, setResults] = useState<ScoredPrediction[]>([]);
+  const [appearances, setAppearances] = useState<LivePlateAppearance[]>([]);
   const pendingPredictionRef = useRef<PendingPrediction | null>(null);
 
   const updatePendingPrediction = useCallback(
@@ -578,8 +779,42 @@ export default function LiveGameClient({ gamePk }: { gamePk: string }) {
     []
   );
 
-  const scorePendingPrediction = useCallback(
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const storedState = readStoredGameState(gamePk);
+
+      setSelectedOutcome(null);
+      setResults(storedState?.results ?? []);
+      setAppearances(storedState?.appearances ?? []);
+      updatePendingPrediction(storedState?.pendingPrediction ?? null);
+      setStorageLoaded(true);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [gamePk, updatePendingPrediction]);
+
+  useEffect(() => {
+    if (!storageLoaded) {
+      return;
+    }
+
+    writeStoredGameState(gamePk, {
+      version: STORAGE_VERSION,
+      pendingPrediction,
+      results,
+      appearances,
+    });
+  }, [appearances, gamePk, pendingPrediction, results, storageLoaded]);
+
+  const handleFeedUpdate = useCallback(
     (nextFeed: LiveGameResponse) => {
+      setAppearances((currentAppearances) =>
+        mergePlateAppearances(
+          currentAppearances,
+          nextFeed.completedPlateAppearances
+        )
+      );
+
       const activePrediction = pendingPredictionRef.current;
 
       if (!activePrediction) {
@@ -618,7 +853,6 @@ export default function LiveGameClient({ gamePk }: { gamePk: string }) {
 
         return [...currentResults, scoredPrediction];
       });
-      setLastResult(scoredPrediction);
       updatePendingPrediction(null);
       setSelectedOutcome(null);
     },
@@ -627,7 +861,8 @@ export default function LiveGameClient({ gamePk }: { gamePk: string }) {
 
   const { feed, loading, error, refresh, checkedAt } = useLiveFeed(
     gamePk,
-    scorePendingPrediction
+    storageLoaded,
+    handleFeedUpdate
   );
 
   const activeAtBat =
@@ -666,7 +901,6 @@ export default function LiveGameClient({ gamePk }: { gamePk: string }) {
       return;
     }
 
-    setLastResult(null);
     updatePendingPrediction({
       atBatIndex: activeAtBat.atBatIndex,
       batter: activeAtBat.batter,
@@ -767,7 +1001,7 @@ export default function LiveGameClient({ gamePk }: { gamePk: string }) {
 
               <ScoreRail
                 results={results}
-                lastResult={lastResult}
+                appearances={appearances}
                 checkedAt={checkedAt}
               />
             </div>
