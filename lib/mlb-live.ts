@@ -73,6 +73,7 @@ export type LivePitch = {
 export type CurrentAtBat = {
   atBatIndex: number;
   batter: string;
+  batterLineupSpot: number | null;
   batterSide: BatterSide;
   batterSummary: PlayerBattingSummary | null;
   pitcher: string;
@@ -94,7 +95,10 @@ export type BaseState = {
 export type LivePlateAppearance = {
   key: string;
   atBatIndex: number;
+  inning: string;
+  inningState: string;
   batter: string;
+  batterLineupSpot: number | null;
   batterSide: BatterSide;
   pitcher: string;
   result: string;
@@ -147,6 +151,7 @@ export type PlayerPitchingSummary = {
 };
 
 type PlayerGameSummary = {
+  lineupSpot: number | null;
   batting: PlayerBattingSummary | null;
   pitching: PlayerPitchingSummary | null;
 };
@@ -241,6 +246,57 @@ function formatInning(linescore: UnknownRecord): string {
   }
 
   return current === null ? "" : String(current);
+}
+
+function formatOrdinal(value: number | null): string {
+  if (value === null) {
+    return "";
+  }
+
+  const modTen = value % 10;
+  const modHundred = value % 100;
+  const suffix =
+    modTen === 1 && modHundred !== 11
+      ? "st"
+      : modTen === 2 && modHundred !== 12
+        ? "nd"
+        : modTen === 3 && modHundred !== 13
+          ? "rd"
+          : "th";
+
+  return `${value}${suffix}`;
+}
+
+function formatHalfInning(value: string): string {
+  const normalized = value.trim().toLowerCase();
+
+  if (normalized === "top") {
+    return "Top";
+  }
+
+  if (normalized === "bottom") {
+    return "Bottom";
+  }
+
+  return value;
+}
+
+function normalizeLineupSpot(value: unknown): number | null {
+  const numericValue =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim()
+        ? Number(value)
+        : null;
+
+  if (numericValue === null || !Number.isFinite(numericValue)) {
+    return null;
+  }
+
+  const spot = numericValue >= 100 ? Math.floor(numericValue / 100) : numericValue;
+  const normalizedSpot = Math.trunc(spot);
+
+  return normalizedSpot >= 1 && normalizedSpot <= 9 ? normalizedSpot : null;
 }
 
 function normalizeBases(linescore: UnknownRecord): BaseState {
@@ -363,6 +419,7 @@ function normalizePlayerSummaries(liveData: UnknownRecord) {
       }
 
       summaries.set(id, {
+        lineupSpot: normalizeLineupSpot(player.battingOrder),
         batting: normalizeBattingSummary(
           pickRecord(player, "stats"),
           pickRecord(player, "seasonStats")
@@ -433,6 +490,8 @@ function normalizeCurrentAtBat(
   return {
     atBatIndex: pickCount(about, "atBatIndex") ?? 0,
     batter: pickString(batter, "fullName", "Current batter"),
+    batterLineupSpot:
+      batterId === null ? null : playerSummaries.get(batterId)?.lineupSpot ?? null,
     batterSide: normalizeBatterSide(pickString(batSide, "code")),
     batterSummary:
       batterId === null ? null : playerSummaries.get(batterId)?.batting ?? null,
@@ -454,10 +513,15 @@ function playIsComplete(play: UnknownRecord) {
   return about.isComplete === true;
 }
 
-function normalizePlateAppearance(play: UnknownRecord): LivePlateAppearance | null {
+function normalizePlateAppearance(
+  play: UnknownRecord,
+  playerSummaries: Map<number, PlayerGameSummary>
+): LivePlateAppearance | null {
   const about = pickRecord(play, "about");
   const result = pickRecord(play, "result");
   const matchup = pickRecord(play, "matchup");
+  const batter = pickRecord(matchup, "batter");
+  const batterId = pickCount(batter, "id");
   const batSide = pickRecord(matchup, "batSide");
   const count = pickRecord(play, "count");
   const atBatIndex = pickCount(about, "atBatIndex");
@@ -472,7 +536,11 @@ function normalizePlateAppearance(play: UnknownRecord): LivePlateAppearance | nu
   return {
     key: String(atBatIndex),
     atBatIndex,
-    batter: pickString(pickRecord(matchup, "batter"), "fullName", "Batter"),
+    inning: formatOrdinal(pickCount(about, "inning")),
+    inningState: formatHalfInning(pickString(about, "halfInning")),
+    batter: pickString(batter, "fullName", "Batter"),
+    batterLineupSpot:
+      batterId === null ? null : playerSummaries.get(batterId)?.lineupSpot ?? null,
     batterSide: normalizeBatterSide(pickString(batSide, "code")),
     pitcher: pickString(pickRecord(matchup, "pitcher"), "fullName", "Pitcher"),
     result: resultLabel || "Plate appearance complete",
@@ -539,7 +607,7 @@ export function normalizeLiveGame(data: unknown): LiveGameResponse {
   const pitchEvents: LivePitch[] = [];
   const completedPlateAppearances = allPlays
     .filter(playIsComplete)
-    .map(normalizePlateAppearance)
+    .map((play) => normalizePlateAppearance(play, playerSummaries))
     .filter(
       (appearance): appearance is LivePlateAppearance => appearance !== null
     );

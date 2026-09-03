@@ -20,8 +20,9 @@ import type {
 } from "@/lib/mlb-live";
 
 const POLL_INTERVAL_MS = 2000;
-const STORAGE_VERSION = 1;
+const STORAGE_VERSION = 2;
 const MAX_STORED_APPEARANCES = 140;
+const RECENT_COLLAPSED_COUNT = 2;
 
 type PendingPrediction = {
   atBatIndex: number;
@@ -184,6 +185,50 @@ function mergePlateAppearances(
 
 function countLabel(balls: number | null, strikes: number | null, outs: number | null) {
   return `${balls ?? "-"}-${strikes ?? "-"}, ${outs ?? "-"} out`;
+}
+
+function teamLogoUrl(team: TeamSummary) {
+  return team.id === null
+    ? ""
+    : `https://www.mlbstatic.com/team-logos/team-cap-on-light/${team.id}.svg`;
+}
+
+function lineupSpotLabel(lineupSpot: number | null | undefined) {
+  return lineupSpot ? `#${lineupSpot}` : "";
+}
+
+function appearanceGroupLabel(appearance: LivePlateAppearance) {
+  if (appearance.inningState && appearance.inning) {
+    return `${appearance.inningState} ${appearance.inning}`;
+  }
+
+  return "Earlier";
+}
+
+function groupAppearancesByHalf(appearances: LivePlateAppearance[]) {
+  const groups: {
+    key: string;
+    label: string;
+    appearances: LivePlateAppearance[];
+  }[] = [];
+
+  appearances.forEach((appearance) => {
+    const label = appearanceGroupLabel(appearance);
+    const currentGroup = groups[groups.length - 1];
+
+    if (currentGroup?.label === label) {
+      currentGroup.appearances.push(appearance);
+      return;
+    }
+
+    groups.push({
+      key: `${label}-${appearance.key}`,
+      label,
+      appearances: [appearance],
+    });
+  });
+
+  return groups;
 }
 
 function formatTime(value: string) {
@@ -363,8 +408,7 @@ function ScoreBugTeam({
   team: TeamSummary;
   batting: boolean;
 }) {
-  const logoUrl =
-    team.id === null ? "" : `https://www.mlbstatic.com/team-logos/${team.id}.svg`;
+  const logoUrl = teamLogoUrl(team);
 
   return (
     <div
@@ -378,10 +422,9 @@ function ScoreBugTeam({
       {logoUrl && (
         <span
           aria-hidden="true"
-          className="h-6 w-6 shrink-0 rounded-full bg-[#f6f7f2] bg-center bg-no-repeat"
+          className="h-8 w-8 shrink-0 bg-center bg-contain bg-no-repeat"
           style={{
             backgroundImage: `url("${logoUrl}")`,
-            backgroundSize: "78%",
           }}
         />
       )}
@@ -444,23 +487,36 @@ function BatterMatchup({
 }) {
   const batterName = atBat?.batter ?? pendingPrediction?.batter;
   const pitcherName = atBat?.pitcher ?? pendingPrediction?.pitcher;
+  const batterLineupSpot = lineupSpotLabel(atBat?.batterLineupSpot);
+  const matchupStatus = atBat
+    ? `${countLabel(atBat.balls, atBat.strikes, atBat.outs)} | ${lockTimingLabel(
+        atBat.pitchCount
+      )}`
+    : pendingPrediction
+      ? "Waiting for the official result"
+      : "No active PA in the feed";
 
   return (
-    <div className="rounded-lg border border-[#3d454e] bg-[#23272d] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:p-5">
-      <p className="text-xs font-semibold uppercase text-[#87919c]">
-        Current Matchup
-      </p>
+    <div className="rounded-lg border border-[#3d454e] bg-[#23272d] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-semibold uppercase text-[#87919c]">
+          Current Matchup
+        </p>
+        <p className="text-xs font-medium text-[#aeb6bf] sm:text-sm">
+          {matchupStatus}
+        </p>
+      </div>
 
       {batterName && pitcherName ? (
-        <div className="mt-3 grid gap-4 border-t border-[#3d454e] pt-3 md:grid-cols-2 md:gap-6">
-          <div>
+        <div className="mt-3 grid grid-cols-2 gap-3 border-t border-[#3d454e] pt-3 sm:gap-4">
+          <div className="min-w-0">
             <p className="text-xs font-semibold uppercase text-[#87919c]">
-              Batter
+              Batter{batterLineupSpot ? ` ${batterLineupSpot}` : ""}
             </p>
-            <h2 className="mt-1 text-2xl font-semibold leading-tight text-[#f6f7f2] sm:text-3xl">
+            <h2 className="mt-1 break-words text-lg font-semibold leading-snug text-[#f6f7f2] sm:text-2xl">
               {batterName}
             </h2>
-            <div className="mt-3 grid gap-1 text-sm font-medium text-[#aeb6bf]">
+            <div className="mt-2 grid gap-0.5 text-xs font-medium text-[#aeb6bf] sm:text-sm">
               <p>
                 <span className="text-[#87919c]">Slash</span>{" "}
                 {atBat?.batterSummary?.slashLine || "--/--/--"}
@@ -472,14 +528,14 @@ function BatterMatchup({
             </div>
           </div>
 
-          <div className="border-t border-[#3d454e] pt-3 md:border-l md:border-t-0 md:pl-6 md:pt-0">
+          <div className="min-w-0 border-l border-[#3d454e] pl-3 sm:pl-4">
             <p className="text-xs font-semibold uppercase text-[#87919c]">
               Pitcher
             </p>
-            <h2 className="mt-1 text-2xl font-semibold leading-tight text-[#f6f7f2] sm:text-3xl">
+            <h2 className="mt-1 break-words text-lg font-semibold leading-snug text-[#f6f7f2] sm:text-2xl">
               {pitcherName}
             </h2>
-            <div className="mt-3 grid gap-1 text-sm font-medium text-[#aeb6bf]">
+            <div className="mt-2 grid gap-0.5 text-xs font-medium text-[#aeb6bf] sm:text-sm">
               <p>
                 <span className="text-[#87919c]">Season</span>{" "}
                 {atBat?.pitcherSummary?.seasonLine || "-- ERA / -- WHIP"}
@@ -492,20 +548,10 @@ function BatterMatchup({
           </div>
         </div>
       ) : (
-        <h2 className="mt-2 text-2xl font-semibold leading-tight text-[#f6f7f2] sm:text-3xl">
+        <h2 className="mt-2 text-xl font-semibold leading-tight text-[#f6f7f2] sm:text-2xl">
           Waiting for the next plate appearance
         </h2>
       )}
-
-      <div className="mt-3 text-sm font-medium text-[#aeb6bf]">
-        {atBat
-          ? `${countLabel(atBat.balls, atBat.strikes, atBat.outs)} | ${lockTimingLabel(
-              atBat.pitchCount
-            )}`
-          : pendingPrediction
-            ? "Waiting for the official result"
-            : "No active PA in the feed"}
-      </div>
     </div>
   );
 }
@@ -633,14 +679,12 @@ function PredictionConsole({
   );
 }
 
-function ScoreRail({
+function ScoreFooter({
   results,
   appearances,
-  checkedAt,
 }: {
   results: ScoredPrediction[];
   appearances: LivePlateAppearance[];
-  checkedAt: string;
 }) {
   const totalScore = results.reduce((sum, result) => sum + result.totalScore, 0);
   const correctCalls = results.filter(
@@ -650,62 +694,92 @@ function ScoreRail({
     results.length === 0 ? 0 : Math.round((correctCalls / results.length) * 100);
   const streak = currentStreak(results);
   const lastResult = results[results.length - 1] ?? null;
+
+  return (
+    <footer className="fixed inset-x-0 bottom-0 z-30 border-t border-[#3d454e] bg-[#111316]/95 px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 text-[#f6f7f2] shadow-[0_-12px_36px_rgba(0,0,0,0.28)] backdrop-blur sm:px-5">
+      <div className="mx-auto grid w-full max-w-7xl grid-cols-[minmax(4.5rem,auto)_repeat(3,minmax(0,1fr))] items-center gap-3 sm:grid-cols-[minmax(7rem,auto)_repeat(4,minmax(0,1fr))_minmax(9rem,auto)]">
+        <div className="min-w-0">
+          <p className="text-[10px] font-semibold uppercase text-[#87919c]">
+            Score
+          </p>
+          <p className="text-3xl font-semibold leading-none text-[#dcff00] sm:text-4xl">
+            {totalScore}
+          </p>
+        </div>
+
+        <div className="min-w-0 text-center">
+          <p className="text-[10px] font-semibold uppercase text-[#87919c]">
+            Calls
+          </p>
+          <p className="mt-0.5 text-sm font-semibold sm:text-lg">
+            {results.length}
+          </p>
+        </div>
+
+        <div className="min-w-0 text-center">
+          <p className="text-[10px] font-semibold uppercase text-[#87919c]">
+            Right
+          </p>
+          <p className="mt-0.5 text-sm font-semibold sm:text-lg">{accuracy}%</p>
+        </div>
+
+        <div className="min-w-0 text-center">
+          <p className="text-[10px] font-semibold uppercase text-[#87919c]">
+            Streak
+          </p>
+          <p className="mt-0.5 text-sm font-semibold sm:text-lg">{streak}</p>
+        </div>
+
+        <div className="hidden min-w-0 text-center sm:block">
+          <p className="text-[10px] font-semibold uppercase text-[#87919c]">
+            PAs
+          </p>
+          <p className="mt-0.5 text-lg font-semibold">{appearances.length}</p>
+        </div>
+
+        <div className="hidden min-w-0 text-right sm:block">
+          <p className="text-[10px] font-semibold uppercase text-[#87919c]">
+            Last
+          </p>
+          <p className="mt-0.5 truncate text-sm font-semibold text-[#f6f7f2]">
+            {lastResult
+              ? `+${lastResult.totalScore} ${describePlateEvent(
+                  lastResult.appearance.eventType,
+                  lastResult.appearance.result
+                )}`
+              : "No call yet"}
+          </p>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+function RecentPlaysPanel({
+  results,
+  appearances,
+  checkedAt,
+}: {
+  results: ScoredPrediction[];
+  appearances: LivePlateAppearance[];
+  checkedAt: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
   const resultByAppearance = new Map(
     results.map((result) => [result.appearance.key, result])
   );
-  const recentAppearances = appearances.slice(-8).reverse();
+  const visibleAppearances = (
+    expanded ? appearances : appearances.slice(-RECENT_COLLAPSED_COUNT)
+  )
+    .slice()
+    .reverse();
+  const groupedAppearances = groupAppearancesByHalf(visibleAppearances);
+  const canExpand = appearances.length > RECENT_COLLAPSED_COUNT;
 
   return (
-    <aside className="grid gap-4 lg:content-start">
-      <section className="rounded-lg border border-[#3d454e] bg-[#23272d] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-semibold uppercase text-[#87919c]">
-              Score
-            </p>
-            <p className="mt-1 text-4xl font-semibold leading-none text-[#dcff00] sm:text-6xl">
-              {totalScore}
-            </p>
-          </div>
-          <div className="max-w-[9rem] text-right text-sm">
-            <p className="text-xs font-semibold uppercase text-[#87919c]">
-              Last
-            </p>
-            <p className="mt-1 font-semibold text-[#f6f7f2]">
-              {lastResult ? `+${lastResult.totalScore}` : "--"}
-            </p>
-            <p className="mt-0.5 truncate text-xs text-[#aeb6bf]">
-              {lastResult
-                ? describePlateEvent(
-                    lastResult.appearance.eventType,
-                    lastResult.appearance.result
-                  )
-                : "No call yet"}
-            </p>
-          </div>
-        </div>
-        <div className="mt-3 grid grid-cols-4 gap-2 border-t border-[#3d454e] pt-3 text-sm">
-          <div className="min-w-0">
-            <p className="text-[#87919c]">Calls</p>
-            <p className="mt-1 text-xl font-semibold">{results.length}</p>
-          </div>
-          <div className="min-w-0">
-            <p className="text-[#87919c]">Right</p>
-            <p className="mt-1 text-xl font-semibold">{accuracy}%</p>
-          </div>
-          <div className="min-w-0">
-            <p className="text-[#87919c]">Streak</p>
-            <p className="mt-1 text-xl font-semibold">{streak}</p>
-          </div>
-          <div className="min-w-0">
-            <p className="text-[#87919c]">PAs</p>
-            <p className="mt-1 text-xl font-semibold">{appearances.length}</p>
-          </div>
-        </div>
-      </section>
-
-      <section className="rounded-lg border border-[#3d454e] bg-[#23272d] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:p-5">
-        <div className="flex items-center justify-between gap-3">
+    <section className="rounded-lg border border-[#3d454e] bg-[#23272d] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
           <p className="text-xs font-semibold uppercase text-[#87919c]">
             Recent Plays
           </p>
@@ -713,62 +787,86 @@ function ScoreRail({
             {formatTime(checkedAt)}
           </p>
         </div>
-        <div className="mt-3 grid gap-2">
-          {recentAppearances.map((appearance) => {
-            const result = resultByAppearance.get(appearance.key) ?? null;
-            const actualLabel = describePlateEvent(
-              appearance.eventType,
-              appearance.result
-            );
-            const detail =
-              appearance.description &&
-              appearance.description !== appearance.result &&
-              appearance.description !== actualLabel
-                ? appearance.description
-                : "";
+        {canExpand && (
+          <button
+            type="button"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((currentExpanded) => !currentExpanded)}
+            className="rounded-md border border-[#3d454e] px-2.5 py-1 text-xs font-semibold text-[#f6f7f2] transition hover:border-[#5c6670]"
+          >
+            {expanded ? "Show less" : "Show all"}
+          </button>
+        )}
+      </div>
 
-            return (
-              <div
-                key={appearance.key}
-                className="rounded-md border border-[#3d454e] bg-[#191b1f] p-2.5 text-sm sm:p-3"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <p className="min-w-0 truncate font-semibold text-[#f6f7f2]">
-                    {appearance.batter}: {actualLabel}
-                  </p>
-                  {result ? (
-                    <p className="shrink-0 font-semibold text-[#dcff00]">
-                      +{result.totalScore}
-                    </p>
-                  ) : (
-                    <p className="shrink-0 text-xs font-semibold uppercase text-[#87919c]">
-                      No call
+      <div className="mt-3 grid gap-3">
+        {groupedAppearances.map((group) => (
+          <div key={group.key} className="grid gap-2">
+            <p className="text-[11px] font-semibold uppercase text-[#87919c]">
+              {group.label}
+            </p>
+            {group.appearances.map((appearance) => {
+              const result = resultByAppearance.get(appearance.key) ?? null;
+              const actualLabel = describePlateEvent(
+                appearance.eventType,
+                appearance.result
+              );
+              const detail =
+                appearance.description &&
+                appearance.description !== appearance.result &&
+                appearance.description !== actualLabel
+                  ? appearance.description
+                  : "";
+              const batterOrder = lineupSpotLabel(appearance.batterLineupSpot);
+
+              return (
+                <div
+                  key={appearance.key}
+                  className="rounded-md border border-[#3d454e] bg-[#191b1f] p-2.5 text-sm"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-[#f6f7f2]">
+                        {batterOrder ? `${batterOrder} ` : ""}
+                        {appearance.batter}
+                      </p>
+                      <p className="mt-0.5 text-xs font-semibold text-[#dcff00]">
+                        Result: {actualLabel}
+                      </p>
+                    </div>
+                    {result ? (
+                      <p className="shrink-0 font-semibold text-[#dcff00]">
+                        +{result.totalScore}
+                      </p>
+                    ) : (
+                      <p className="shrink-0 text-xs font-semibold uppercase text-[#87919c]">
+                        No call
+                      </p>
+                    )}
+                  </div>
+                  {detail && (
+                    <p className="mt-1 line-clamp-1 text-xs text-[#87919c] sm:line-clamp-2">
+                      {detail}
                     </p>
                   )}
-                </div>
-                {detail && (
-                  <p className="mt-1 line-clamp-1 text-xs text-[#87919c] sm:line-clamp-2">
-                    {detail}
+                  <p className="mt-2 text-xs text-[#aeb6bf]">
+                    <span className="font-semibold text-[#87919c]">
+                      Your call:
+                    </span>{" "}
+                    {result
+                      ? getPlateOutcomeOption(result.predictedOutcome).label
+                      : "No call"}
                   </p>
-                )}
-                <p className="mt-2 text-xs text-[#aeb6bf]">
-                  <span className="font-semibold text-[#87919c]">Call:</span>{" "}
-                  {result
-                    ? getPlateOutcomeOption(result.predictedOutcome).label
-                    : "None"}
-                  <span className="mx-2 text-[#5c6670]"> | </span>
-                  <span className="font-semibold text-[#87919c]">Result:</span>{" "}
-                  {actualLabel}
-                </p>
-              </div>
-            );
-          })}
-          {!recentAppearances.length && (
-            <p className="text-sm text-[#aeb6bf]">No completed PAs yet.</p>
-          )}
-        </div>
-      </section>
-    </aside>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+        {!visibleAppearances.length && (
+          <p className="text-sm text-[#aeb6bf]">No completed PAs yet.</p>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -924,7 +1022,7 @@ export default function LiveGameClient({ gamePk }: { gamePk: string }) {
   }
 
   return (
-    <main className="min-h-screen overflow-x-clip bg-[#191b1f] px-4 py-5 text-[#f6f7f2] sm:px-6 sm:py-7">
+    <main className="min-h-screen overflow-x-clip bg-[#191b1f] px-4 pb-28 pt-5 text-[#f6f7f2] sm:px-6 sm:pb-24 sm:pt-7">
       <section className="mx-auto flex w-full max-w-7xl flex-col gap-5">
         <header className="flex flex-col gap-4 border-b border-[#3d454e] pb-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -1011,12 +1109,14 @@ export default function LiveGameClient({ gamePk }: { gamePk: string }) {
                 )}
               </div>
 
-              <ScoreRail
+              <RecentPlaysPanel
                 results={results}
                 appearances={appearances}
                 checkedAt={checkedAt}
               />
             </div>
+
+            <ScoreFooter results={results} appearances={appearances} />
           </>
         )}
       </section>

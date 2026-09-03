@@ -13,9 +13,8 @@ import type { PlateOutcomeId } from "@/lib/plate-outcomes";
 
 export const DEMO_GAME_SLUG = "demo";
 const DEMO_GAME_PK = 0;
-const ACTIVE_PA_MS = 12000;
+const PITCH_MS = 15000;
 const BETWEEN_PA_MS = 2500;
-const PA_SLOT_MS = ACTIVE_PA_MS + BETWEEN_PA_MS;
 
 type DemoTeamState = {
   awayScore: number;
@@ -27,6 +26,7 @@ type DemoTeamState = {
 type DemoPlay = {
   half: "Top" | "Bottom";
   batter: string;
+  lineupSpot: number;
   batterSide: BatterSide;
   batterSummary: PlayerBattingSummary;
   pitcher: string;
@@ -80,6 +80,7 @@ const demoPlays: DemoPlay[] = [
   {
     half: "Top",
     batter: "Jung Hoo Lee",
+    lineupSpot: 1,
     batterSide: "L",
     batterSummary: {
       slashLine: ".281/.342/.414",
@@ -100,6 +101,7 @@ const demoPlays: DemoPlay[] = [
   {
     half: "Top",
     batter: "LaMonte Wade Jr.",
+    lineupSpot: 2,
     batterSide: "L",
     batterSummary: {
       slashLine: ".263/.374/.421",
@@ -120,6 +122,7 @@ const demoPlays: DemoPlay[] = [
   {
     half: "Top",
     batter: "Matt Chapman",
+    lineupSpot: 3,
     batterSide: "R",
     batterSummary: {
       slashLine: ".247/.333/.463",
@@ -140,6 +143,7 @@ const demoPlays: DemoPlay[] = [
   {
     half: "Top",
     batter: "Heliot Ramos",
+    lineupSpot: 4,
     batterSide: "R",
     batterSummary: {
       slashLine: ".269/.324/.447",
@@ -165,6 +169,7 @@ const demoPlays: DemoPlay[] = [
   {
     half: "Top",
     batter: "Wilmer Flores",
+    lineupSpot: 5,
     batterSide: "R",
     batterSummary: {
       slashLine: ".251/.314/.435",
@@ -185,6 +190,7 @@ const demoPlays: DemoPlay[] = [
   {
     half: "Bottom",
     batter: "Oneil Cruz",
+    lineupSpot: 1,
     batterSide: "L",
     batterSummary: {
       slashLine: ".258/.329/.512",
@@ -205,6 +211,7 @@ const demoPlays: DemoPlay[] = [
   {
     half: "Bottom",
     batter: "Bryan Reynolds",
+    lineupSpot: 2,
     batterSide: "S",
     batterSummary: {
       slashLine: ".276/.349/.481",
@@ -225,6 +232,7 @@ const demoPlays: DemoPlay[] = [
   {
     half: "Bottom",
     batter: "Ke'Bryan Hayes",
+    lineupSpot: 3,
     batterSide: "R",
     batterSummary: {
       slashLine: ".263/.310/.392",
@@ -245,6 +253,7 @@ const demoPlays: DemoPlay[] = [
   {
     half: "Bottom",
     batter: "Andrew McCutchen",
+    lineupSpot: 4,
     batterSide: "R",
     batterSummary: {
       slashLine: ".246/.338/.418",
@@ -265,6 +274,7 @@ const demoPlays: DemoPlay[] = [
   {
     half: "Bottom",
     batter: "Spencer Horwitz",
+    lineupSpot: 5,
     batterSide: "L",
     batterSummary: {
       slashLine: ".272/.357/.425",
@@ -285,6 +295,7 @@ const demoPlays: DemoPlay[] = [
   {
     half: "Bottom",
     batter: "Joey Bart",
+    lineupSpot: 6,
     batterSide: "R",
     batterSummary: {
       slashLine: ".244/.321/.437",
@@ -304,12 +315,23 @@ const demoPlays: DemoPlay[] = [
   },
 ];
 
-const DEMO_LOOP_MS = demoPlays.length * PA_SLOT_MS;
+function activeMsFor(play: DemoPlay) {
+  return Math.max(1, play.pitchCount) * PITCH_MS;
+}
+
+function slotMsFor(play: DemoPlay) {
+  return activeMsFor(play) + BETWEEN_PA_MS;
+}
+
+const DEMO_LOOP_MS = demoPlays.reduce(
+  (totalMs, play) => totalMs + slotMsFor(play),
+  0
+);
 
 function visibleCount(play: DemoPlay, elapsedMs: number) {
   const pitchCount = Math.min(
     play.pitchCount - 1,
-    Math.max(0, Math.floor((elapsedMs / ACTIVE_PA_MS) * play.pitchCount))
+    Math.max(0, Math.floor(elapsedMs / PITCH_MS))
   );
   const progress = play.pitchCount <= 1 ? 0 : pitchCount / (play.pitchCount - 1);
 
@@ -323,11 +345,36 @@ function visibleCount(play: DemoPlay, elapsedMs: number) {
   };
 }
 
+function playTimingFor(loopElapsedMs: number) {
+  let cursorMs = 0;
+
+  for (let playIndex = 0; playIndex < demoPlays.length; playIndex += 1) {
+    const slotMs = slotMsFor(demoPlays[playIndex]);
+
+    if (loopElapsedMs < cursorMs + slotMs) {
+      return {
+        playIndex,
+        playElapsedMs: loopElapsedMs - cursorMs,
+      };
+    }
+
+    cursorMs += slotMs;
+  }
+
+  return {
+    playIndex: demoPlays.length - 1,
+    playElapsedMs: slotMsFor(demoPlays[demoPlays.length - 1]),
+  };
+}
+
 function plateAppearanceFor(play: DemoPlay, atBatIndex: number): LivePlateAppearance {
   return {
     key: `demo-${atBatIndex}`,
     atBatIndex,
+    inning: "7th",
+    inningState: play.half,
     batter: play.batter,
+    batterLineupSpot: play.lineupSpot,
     batterSide: play.batterSide,
     pitcher: play.pitcher,
     result: play.result,
@@ -387,6 +434,7 @@ function currentAtBatFor(
   return {
     atBatIndex,
     batter: play.batter,
+    batterLineupSpot: play.lineupSpot,
     batterSide: play.batterSide,
     batterSummary: play.batterSummary,
     pitcher: play.pitcher,
@@ -407,12 +455,11 @@ function atBatIndexFor(cycle: number, playIndex: number) {
 function buildDemoFeed(nowMs: number) {
   const cycle = Math.floor(nowMs / DEMO_LOOP_MS);
   const elapsed = nowMs % DEMO_LOOP_MS;
-  const playIndex = Math.floor(elapsed / PA_SLOT_MS);
-  const playElapsed = elapsed % PA_SLOT_MS;
+  const { playIndex, playElapsedMs } = playTimingFor(elapsed);
   const play = demoPlays[playIndex];
   const currentAtBatIndex = atBatIndexFor(cycle, playIndex);
-  const playIsComplete = playElapsed >= ACTIVE_PA_MS;
-  const count = visibleCount(play, playElapsed);
+  const playIsComplete = playElapsedMs >= activeMsFor(play);
+  const count = visibleCount(play, playElapsedMs);
   const visibleState = playIsComplete ? play.after : play.before;
   const completedCount = playIndex + (playIsComplete ? 1 : 0);
   const completedPlateAppearances = demoPlays
@@ -470,7 +517,7 @@ function buildDemoFeed(nowMs: number) {
     outs: visibleState.outs,
     currentAtBat: playIsComplete
       ? null
-      : currentAtBatFor(play, currentAtBatIndex, playElapsed),
+      : currentAtBatFor(play, currentAtBatIndex, playElapsedMs),
     completedPlateAppearances,
     latestPitch,
     recentPitches: latestPitch ? [latestPitch] : [],
