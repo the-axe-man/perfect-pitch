@@ -16,6 +16,7 @@ export const LIVE_PITCH_TYPES = [
 ] as const;
 
 export type TeamSummary = {
+  id: number | null;
   name: string;
   abbreviation: string;
   score: number | null;
@@ -224,6 +225,7 @@ function normalizeTeam(teamSide: UnknownRecord, lineSide: UnknownRecord): TeamSu
   const team = Object.keys(nestedTeam).length ? nestedTeam : teamSide;
 
   return {
+    id: pickNumber(team, "id"),
     name: pickString(team, "name", "TBD"),
     abbreviation: pickString(team, "abbreviation", pickString(team, "name", "TBD")),
     score: pickNumber(teamSide, "score") ?? pickNumber(lineSide, "runs"),

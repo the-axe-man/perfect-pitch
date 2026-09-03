@@ -331,24 +331,24 @@ function useLiveFeed(
 
 function BaseDiamond({ bases }: { bases: BaseState }) {
   const baseClass =
-    "absolute h-6 w-6 rotate-45 rounded-[3px] border-2 transition-colors";
+    "absolute h-5 w-5 rotate-45 rounded-[3px] border-2 transition-colors";
   const occupiedClass = "border-[#dcff00] bg-[#dcff00]";
   const emptyClass = "border-[#65717d] bg-[#191b1f]";
 
   return (
-    <div aria-label="Base state" className="relative h-14 w-20 shrink-0">
+    <div aria-label="Base state" className="relative h-11 w-16 shrink-0">
       <span
-        className={`${baseClass} left-[47px] top-[22px] ${
+        className={`${baseClass} left-[40px] top-[19px] ${
           bases.first ? occupiedClass : emptyClass
         }`}
       />
       <span
-        className={`${baseClass} left-[27px] top-[2px] ${
+        className={`${baseClass} left-[22px] top-[1px] ${
           bases.second ? occupiedClass : emptyClass
         }`}
       />
       <span
-        className={`${baseClass} left-[7px] top-[22px] ${
+        className={`${baseClass} left-[4px] top-[19px] ${
           bases.third ? occupiedClass : emptyClass
         }`}
       />
@@ -363,23 +363,34 @@ function ScoreBugTeam({
   team: TeamSummary;
   batting: boolean;
 }) {
+  const logoUrl =
+    team.id === null ? "" : `https://www.mlbstatic.com/team-logos/${team.id}.svg`;
+
   return (
     <div
-      className={`flex min-w-[7.5rem] items-center gap-3 border-l border-[#3d454e] px-4 py-3 first:border-l-0 ${
+      className={`flex h-12 min-w-0 items-center gap-2.5 border-l border-[#3d454e] px-3 first:border-l-0 sm:px-4 ${
         batting ? "bg-[#2d3329]" : ""
       }`}
     >
-      <div className="min-w-0">
-        <div className="flex items-center gap-1.5">
-          {batting && (
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#dcff00]" />
-          )}
-          <p className="truncate text-sm font-semibold text-[#f6f7f2]">
-            {team.abbreviation}
-          </p>
-        </div>
+      {batting && (
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#dcff00]" />
+      )}
+      {logoUrl && (
+        <span
+          aria-hidden="true"
+          className="h-6 w-6 shrink-0 rounded-full bg-[#f6f7f2] bg-center bg-no-repeat"
+          style={{
+            backgroundImage: `url("${logoUrl}")`,
+            backgroundSize: "78%",
+          }}
+        />
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-[#f6f7f2]">
+          {team.abbreviation}
+        </p>
       </div>
-      <p className="text-3xl font-semibold text-[#f6f7f2]">
+      <p className="shrink-0 text-2xl font-semibold text-[#f6f7f2]">
         {team.score ?? "-"}
       </p>
     </div>
@@ -392,15 +403,17 @@ function ScoreBug({ feed }: { feed: LiveGameResponse }) {
 
   return (
     <section className="overflow-hidden rounded-lg border border-[#3d454e] bg-[#23272d] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-      <div className="grid gap-0 md:grid-cols-[auto_auto_minmax(13rem,auto)]">
+      <div className="grid gap-0">
         <div className="grid grid-cols-2">
           <ScoreBugTeam team={feed.away} batting={topHalf} />
           <ScoreBugTeam team={feed.home} batting={bottomHalf} />
         </div>
 
-        <div className="flex items-center justify-between gap-5 border-t border-[#3d454e] px-4 py-3 md:border-l md:border-t-0">
-          <BaseDiamond bases={feed.bases} />
-          <div className="text-right">
+        <div className="grid min-h-14 grid-cols-[5.75rem_minmax(5.25rem,auto)_minmax(0,1fr)] border-t border-[#3d454e] sm:grid-cols-[7rem_minmax(7rem,auto)_minmax(0,1fr)]">
+          <div className="flex items-center justify-center border-r border-[#3d454e] px-2">
+            <BaseDiamond bases={feed.bases} />
+          </div>
+          <div className="flex flex-col items-center justify-center border-r border-[#3d454e] px-3 py-2 text-center">
             <p className="text-xs font-semibold uppercase text-[#87919c]">
               Count
             </p>
@@ -408,15 +421,14 @@ function ScoreBug({ feed }: { feed: LiveGameResponse }) {
               {countLabel(feed.balls, feed.strikes, feed.outs)}
             </p>
           </div>
-        </div>
-
-        <div className="flex items-center justify-between gap-3 border-t border-[#3d454e] px-4 py-3 md:border-l md:border-t-0">
-          <p className="text-sm font-semibold text-[#dcff00]">
-            {inningLabel(feed)}
-          </p>
-          <p className="text-xs font-medium text-[#87919c]">
-            {feed.status.detailedState}
-          </p>
+          <div className="flex min-w-0 items-center justify-between gap-3 px-3 py-2">
+            <p className="truncate text-sm font-semibold text-[#dcff00]">
+              {inningLabel(feed)}
+            </p>
+            <p className="truncate text-xs font-medium text-[#87919c]">
+              {feed.status.detailedState}
+            </p>
+          </div>
         </div>
       </div>
     </section>

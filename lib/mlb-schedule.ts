@@ -15,6 +15,7 @@ const SCHEDULE_FIELDS = [
   "away",
   "home",
   "team",
+  "id",
   "name",
   "abbreviation",
   "score",
