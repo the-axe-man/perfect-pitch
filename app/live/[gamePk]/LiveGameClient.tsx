@@ -1,7 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   PLATE_OUTCOME_OPTIONS,
   describePlateEvent,
@@ -58,6 +65,10 @@ type StoredGameState = {
 
 function storageKey(gamePk: string) {
   return `shot-caller:game:${gamePk}`;
+}
+
+function classNames(...classes: (string | false | null | undefined)[]) {
+  return classes.filter(Boolean).join(" ");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -283,6 +294,118 @@ function activeAtBatFromFeed(feed: LiveGameResponse | null) {
     : null;
 }
 
+function useChangePulse(value: string | number | null, durationMs = 560) {
+  const [changed, setChanged] = useState(false);
+  const previousValue = useRef(value);
+  const mounted = useRef(false);
+
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      previousValue.current = value;
+      return;
+    }
+
+    if (Object.is(previousValue.current, value)) {
+      return;
+    }
+
+    previousValue.current = value;
+    setChanged(true);
+
+    const timer = window.setTimeout(() => {
+      setChanged(false);
+    }, durationMs);
+
+    return () => window.clearTimeout(timer);
+  }, [durationMs, value]);
+
+  return changed;
+}
+
+function useAnimatedNumber(value: number, durationMs = 420) {
+  const [displayValue, setDisplayValue] = useState(value);
+  const displayValueRef = useRef(value);
+
+  useEffect(() => {
+    if (
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ||
+      displayValueRef.current === value
+    ) {
+      displayValueRef.current = value;
+      setDisplayValue(value);
+      return;
+    }
+
+    const startValue = displayValueRef.current;
+    const delta = value - startValue;
+    const startTime = window.performance.now();
+    let animationFrame = 0;
+
+    const step = (now: number) => {
+      const progress = Math.min(1, (now - startTime) / durationMs);
+      const easedProgress = 1 - (1 - progress) ** 3;
+      const nextValue = Math.round(startValue + delta * easedProgress);
+
+      displayValueRef.current = nextValue;
+      setDisplayValue(nextValue);
+
+      if (progress < 1) {
+        animationFrame = window.requestAnimationFrame(step);
+        return;
+      }
+
+      displayValueRef.current = value;
+      setDisplayValue(value);
+    };
+
+    animationFrame = window.requestAnimationFrame(step);
+
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [durationMs, value]);
+
+  return displayValue;
+}
+
+function ChangePulse({
+  value,
+  children,
+  className = "",
+}: {
+  value: string | number | null;
+  children: ReactNode;
+  className?: string;
+}) {
+  const changed = useChangePulse(value);
+
+  return (
+    <span className={classNames(className, changed && "live-change-pulse")}>
+      {children}
+    </span>
+  );
+}
+
+function AnimatedNumber({
+  value,
+  suffix = "",
+  fallback = "-",
+  className = "",
+}: {
+  value: number | null;
+  suffix?: string;
+  fallback?: string;
+  className?: string;
+}) {
+  const animatedValue = useAnimatedNumber(value ?? 0);
+  const changed = useChangePulse(value);
+
+  return (
+    <span className={classNames(className, changed && "live-number-pop")}>
+      {value === null ? fallback : `${animatedValue}${suffix}`}
+    </span>
+  );
+}
+
 function useLiveFeed(
   gamePk: string,
   enabled: boolean,
@@ -439,9 +562,10 @@ function ScoreBugTeam({
           {team.abbreviation}
         </p>
       </div>
-      <p className="shrink-0 text-2xl font-semibold text-[#f6f7f2]">
-        {team.score ?? "-"}
-      </p>
+      <AnimatedNumber
+        value={team.score}
+        className="shrink-0 text-2xl font-semibold text-[#f6f7f2]"
+      />
     </div>
   );
 }
@@ -449,6 +573,8 @@ function ScoreBugTeam({
 function ScoreBug({ feed }: { feed: LiveGameResponse }) {
   const topHalf = feed.inningState.toLowerCase().startsWith("top");
   const bottomHalf = feed.inningState.toLowerCase().startsWith("bottom");
+  const currentCount = countLabel(feed.balls, feed.strikes, feed.outs);
+  const currentInning = inningLabel(feed);
 
   return (
     <section className="overflow-hidden rounded-lg border border-[#3d454e] bg-[#23272d] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
@@ -466,14 +592,20 @@ function ScoreBug({ feed }: { feed: LiveGameResponse }) {
             <p className="text-xs font-semibold uppercase text-[#87919c]">
               Count
             </p>
-            <p className="mt-1 text-sm font-semibold text-[#f6f7f2]">
-              {countLabel(feed.balls, feed.strikes, feed.outs)}
-            </p>
+            <ChangePulse
+              value={currentCount}
+              className="mt-1 text-sm font-semibold text-[#f6f7f2]"
+            >
+              {currentCount}
+            </ChangePulse>
           </div>
           <div className="flex min-w-0 items-center justify-between gap-3 px-3 py-2">
-            <p className="truncate text-sm font-semibold text-[#dcff00]">
-              {inningLabel(feed)}
-            </p>
+            <ChangePulse
+              value={currentInning}
+              className="truncate text-sm font-semibold text-[#dcff00]"
+            >
+              {currentInning}
+            </ChangePulse>
             <p className="truncate text-xs font-medium text-[#87919c]">
               {feed.status.detailedState}
             </p>
@@ -508,9 +640,12 @@ function BatterMatchup({
         <p className="text-xs font-semibold uppercase text-[#87919c]">
           Current Matchup
         </p>
-        <p className="text-xs font-medium text-[#aeb6bf] sm:text-sm">
+        <ChangePulse
+          value={matchupStatus}
+          className="text-xs font-medium text-[#aeb6bf] sm:text-sm"
+        >
           {matchupStatus}
-        </p>
+        </ChangePulse>
       </div>
 
       {batterName && pitcherName ? (
@@ -656,7 +791,12 @@ function PredictionConsole({
         ) : (
           <p className="text-sm font-medium text-[#aeb6bf]">
             Early bonus:{" "}
-            <span className="font-semibold text-[#dcff00]">+{timingBonus}</span>
+            <ChangePulse
+              value={timingBonus}
+              className="font-semibold text-[#dcff00]"
+            >
+              +{timingBonus}
+            </ChangePulse>
           </p>
         )}
       </div>
@@ -700,53 +840,68 @@ function ScoreFooter({
           <p className="text-[10px] font-semibold uppercase text-[#87919c]">
             Score
           </p>
-          <p className="text-3xl font-semibold leading-none text-[#dcff00] sm:text-4xl">
-            {totalScore}
-          </p>
+          <AnimatedNumber
+            value={totalScore}
+            className="block text-3xl font-semibold leading-none text-[#dcff00] sm:text-4xl"
+          />
         </div>
 
         <div className="min-w-0 text-center">
           <p className="text-[10px] font-semibold uppercase text-[#87919c]">
             Calls
           </p>
-          <p className="mt-0.5 text-sm font-semibold sm:text-lg">
-            {results.length}
-          </p>
+          <AnimatedNumber
+            value={results.length}
+            className="mt-0.5 block text-sm font-semibold sm:text-lg"
+          />
         </div>
 
         <div className="min-w-0 text-center">
           <p className="text-[10px] font-semibold uppercase text-[#87919c]">
             Right
           </p>
-          <p className="mt-0.5 text-sm font-semibold sm:text-lg">{accuracy}%</p>
+          <AnimatedNumber
+            value={accuracy}
+            suffix="%"
+            className="mt-0.5 block text-sm font-semibold sm:text-lg"
+          />
         </div>
 
         <div className="min-w-0 text-center">
           <p className="text-[10px] font-semibold uppercase text-[#87919c]">
             Streak
           </p>
-          <p className="mt-0.5 text-sm font-semibold sm:text-lg">{streak}</p>
+          <AnimatedNumber
+            value={streak}
+            className="mt-0.5 block text-sm font-semibold sm:text-lg"
+          />
         </div>
 
         <div className="hidden min-w-0 text-center sm:block">
           <p className="text-[10px] font-semibold uppercase text-[#87919c]">
             PAs
           </p>
-          <p className="mt-0.5 text-lg font-semibold">{appearances.length}</p>
+          <AnimatedNumber
+            value={appearances.length}
+            className="mt-0.5 block text-lg font-semibold"
+          />
         </div>
 
         <div className="hidden min-w-0 text-right sm:block">
           <p className="text-[10px] font-semibold uppercase text-[#87919c]">
             Last
           </p>
-          <p className="mt-0.5 truncate text-sm font-semibold text-[#f6f7f2]">
+          <ChangePulse
+            value={lastResult?.id ?? ""}
+            className="mt-0.5 block truncate text-sm font-semibold text-[#f6f7f2]"
+          >
             {lastResult
               ? `+${lastResult.totalScore} ${describePlateEvent(
                   lastResult.appearance.eventType,
                   lastResult.appearance.result
                 )}`
               : "No call yet"}
-          </p>
+          </ChangePulse>
         </div>
       </div>
     </footer>
@@ -797,7 +952,13 @@ function RecentPlaysPanel({
         )}
       </div>
 
-      <div className="mt-3 grid gap-3">
+      <div
+        className={classNames(
+          "mt-3 grid gap-3",
+          expanded &&
+            "max-h-[22rem] overflow-y-auto overscroll-contain pr-1 sm:max-h-[34rem]"
+        )}
+      >
         {groupedAppearances.map((group) => (
           <div key={group.key} className="grid gap-2">
             <p className="text-[11px] font-semibold uppercase text-[#87919c]">
