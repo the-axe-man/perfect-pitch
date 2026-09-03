@@ -1,4 +1,5 @@
 import { normalizeLiveGame } from "@/lib/mlb-live";
+import { DEMO_GAME_SLUG, getDemoLivePoll } from "@/lib/mlb-demo";
 
 export const dynamic = "force-dynamic";
 
@@ -114,13 +115,21 @@ export async function GET(
   { params }: { params: Promise<{ gamePk: string }> }
 ) {
   const { gamePk } = await params;
+  const requestUrl = new URL(request.url);
+  const since = requestUrl.searchParams.get("since");
+
+  if (gamePk === DEMO_GAME_SLUG) {
+    return Response.json(getDemoLivePoll(since), {
+      headers: {
+        "Cache-Control": "no-store",
+      },
+    });
+  }
 
   if (!/^\d+$/.test(gamePk)) {
     return Response.json({ error: "Invalid game id." }, { status: 400 });
   }
 
-  const requestUrl = new URL(request.url);
-  const since = requestUrl.searchParams.get("since");
   const latestTimecode = await getLatestTimecode(gamePk);
   const checkedAt = new Date().toISOString();
 

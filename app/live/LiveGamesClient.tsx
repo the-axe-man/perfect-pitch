@@ -308,6 +308,31 @@ export default function LiveGamesClient({
           </Link>
         </div>
 
+        <Link
+          href="/live/demo"
+          className="rounded-lg border border-[#dcff00] bg-[#23272d] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition hover:bg-[#2d3329]"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <span className="rounded-lg border border-[#dcff00] bg-[#dcff00] px-3 py-1 text-[11px] font-semibold uppercase text-[#17191b]">
+              Demo
+            </span>
+            <span className="text-sm font-medium text-[#aeb6bf]">
+              Looping 7th
+            </span>
+          </div>
+          <div className="mt-5 flex items-end justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase text-[#87919c]">
+                Test Game
+              </p>
+              <p className="mt-1 text-3xl font-semibold text-[#f6f7f2]">
+                Simulated Inning
+              </p>
+            </div>
+            <p className="text-4xl font-semibold text-[#dcff00]">Play</p>
+          </div>
+        </Link>
+
         {error && (
           <div className="rounded-lg border border-[#7a3b3b] bg-[#332626] p-4 text-[#f5c7c7]">
             {error}
