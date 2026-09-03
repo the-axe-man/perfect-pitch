@@ -566,14 +566,12 @@ function OutcomeButton({
   outcomeId,
   selected,
   disabled,
-  availableScore,
   onSelect,
   onLock,
 }: {
   outcomeId: PlateOutcomeId;
   selected: boolean;
   disabled: boolean;
-  availableScore: number;
   onSelect: (outcomeId: PlateOutcomeId) => void;
   onLock: () => void;
 }) {
@@ -593,32 +591,27 @@ function OutcomeButton({
 
         onSelect(outcomeId);
       }}
-      className={`relative min-h-[76px] rounded-lg border p-2.5 text-left transition disabled:cursor-not-allowed disabled:opacity-45 sm:min-h-[84px] sm:p-3 ${
+      className={`flex min-h-[76px] flex-col justify-between gap-2 rounded-lg border p-2.5 text-left transition disabled:cursor-not-allowed disabled:opacity-45 sm:min-h-[84px] sm:p-3 ${
         selected
-          ? "border-[#dcff00] bg-[#dcff00] pb-10 text-[#17191b] shadow-[0_4px_0_#8ea500]"
+          ? "border-[#dcff00] bg-[#dcff00] text-[#17191b] shadow-[0_4px_0_#8ea500]"
           : "border-[#3d454e] bg-[#191b1f] text-[#f6f7f2] hover:border-[#5c6670] hover:bg-[#272c33]"
       }`}
     >
-      <span className="flex items-center justify-between gap-2">
+      <span className="flex items-start justify-between gap-2">
+        <span className="text-base font-semibold leading-tight sm:text-lg">
+          {outcome.label}
+        </span>
         <span
-          className={`text-xs font-semibold uppercase ${
-            selected ? "text-[#394100]" : "text-[#87919c]"
+          className={`shrink-0 text-xs font-semibold ${
+            selected ? "text-[#394100]" : "text-[#aeb6bf]"
           }`}
         >
-          {outcome.shortLabel}
+          {outcome.basePoints} pts
         </span>
-        {!selected && (
-          <span className="text-xs font-semibold text-[#aeb6bf]">
-            {outcome.basePoints} pts
-          </span>
-        )}
-      </span>
-      <span className="mt-1 text-base font-semibold leading-tight sm:text-lg">
-        {outcome.label}
       </span>
       {selected && (
-        <span className="absolute bottom-2 left-2 right-2 rounded-md bg-[#17191b] px-2 py-1 text-center text-sm font-semibold text-[#dcff00]">
-          Lock +{availableScore}
+        <span className="rounded-md bg-[#17191b] px-2 py-1 text-center text-sm font-semibold text-[#dcff00]">
+          Lock in
         </span>
       )}
     </button>
@@ -675,7 +668,6 @@ function PredictionConsole({
             outcomeId={outcome.id}
             selected={selectedOutcome === outcome.id}
             disabled={disabled}
-            availableScore={outcome.basePoints + timingBonus}
             onSelect={onSelectOutcome}
             onLock={onLock}
           />
