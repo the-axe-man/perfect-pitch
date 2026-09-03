@@ -277,6 +277,12 @@ function currentStreak(results: ScoredPrediction[]) {
   return streak;
 }
 
+function activeAtBatFromFeed(feed: LiveGameResponse | null) {
+  return feed?.status.isLive && feed.currentAtBat && !feed.currentAtBat.isComplete
+    ? feed.currentAtBat
+    : null;
+}
+
 function useLiveFeed(
   gamePk: string,
   enabled: boolean,
@@ -918,6 +924,20 @@ export default function LiveGameClient({ gamePk }: { gamePk: string }) {
 
   const handleFeedUpdate = useCallback(
     (nextFeed: LiveGameResponse) => {
+      const nextActiveAtBat = activeAtBatFromFeed(nextFeed);
+
+      setSelectedOutcome((currentSelection) => {
+        if (
+          currentSelection &&
+          (!nextActiveAtBat ||
+            currentSelection.atBatIndex !== nextActiveAtBat.atBatIndex)
+        ) {
+          return null;
+        }
+
+        return currentSelection;
+      });
+
       setAppearances((currentAppearances) =>
         mergePlateAppearances(
           currentAppearances,
@@ -936,6 +956,22 @@ export default function LiveGameClient({ gamePk }: { gamePk: string }) {
       );
 
       if (!completedAppearance) {
+        const feedAdvancedPastPrediction =
+          nextFeed.completedPlateAppearances.some(
+            (appearance) => appearance.atBatIndex > activePrediction.atBatIndex
+          ) ||
+          Boolean(
+            nextActiveAtBat &&
+              (nextActiveAtBat.atBatIndex !== activePrediction.atBatIndex ||
+                nextActiveAtBat.batter !== activePrediction.batter ||
+                nextActiveAtBat.pitcher !== activePrediction.pitcher)
+          );
+
+        if (feedAdvancedPastPrediction) {
+          updatePendingPrediction(null);
+          setSelectedOutcome(null);
+        }
+
         return;
       }
 
@@ -976,9 +1012,7 @@ export default function LiveGameClient({ gamePk }: { gamePk: string }) {
   );
 
   const activeAtBat =
-    feed?.status.isLive && feed.currentAtBat && !feed.currentAtBat.isComplete
-      ? feed.currentAtBat
-      : null;
+    activeAtBatFromFeed(feed);
 
   const activeSelectedOutcome =
     activeAtBat && selectedOutcome?.atBatIndex === activeAtBat.atBatIndex
