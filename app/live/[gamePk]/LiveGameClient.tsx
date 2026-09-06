@@ -31,6 +31,11 @@ const STORAGE_VERSION = 2;
 const MAX_STORED_APPEARANCES = 140;
 const RECENT_COLLAPSED_COUNT = 2;
 const RESULT_FLASH_MS = 3100;
+const FEED_DELAY_OPTIONS_MS = [5000, 10000, 15000] as const;
+const DEFAULT_FEED_DELAY_MS = 10000;
+const FEED_DELAY_STORAGE_KEY = "shot-caller:feed-delay-ms";
+
+type FeedDelayMs = (typeof FEED_DELAY_OPTIONS_MS)[number];
 
 type PendingPrediction = {
   atBatIndex: number;
@@ -70,12 +75,22 @@ type StoredGameState = {
   appearances: LivePlateAppearance[];
 };
 
+type QueuedFeedSnapshot = {
+  feed: LiveGameResponse;
+  timecode: string;
+  receivedAt: number;
+};
+
 function storageKey(gamePk: string) {
   return `shot-caller:game:${gamePk}`;
 }
 
 function classNames(...classes: (string | false | null | undefined)[]) {
   return classes.filter(Boolean).join(" ");
+}
+
+function isFeedDelayMs(value: number): value is FeedDelayMs {
+  return FEED_DELAY_OPTIONS_MS.includes(value as FeedDelayMs);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -172,9 +187,28 @@ function readStoredGameState(gamePk: string): StoredGameState | null {
   }
 }
 
+function readStoredFeedDelay() {
+  try {
+    const storedDelay = window.localStorage.getItem(FEED_DELAY_STORAGE_KEY);
+    const delayMs = Number(storedDelay);
+
+    return isFeedDelayMs(delayMs) ? delayMs : DEFAULT_FEED_DELAY_MS;
+  } catch {
+    return DEFAULT_FEED_DELAY_MS;
+  }
+}
+
 function writeStoredGameState(gamePk: string, state: StoredGameState) {
   try {
     window.localStorage.setItem(storageKey(gamePk), JSON.stringify(state));
+  } catch {
+    // Storage can fail in private browsing or when a device is out of quota.
+  }
+}
+
+function writeStoredFeedDelay(feedDelayMs: FeedDelayMs) {
+  try {
+    window.localStorage.setItem(FEED_DELAY_STORAGE_KEY, String(feedDelayMs));
   } catch {
     // Storage can fail in private browsing or when a device is out of quota.
   }
@@ -463,6 +497,7 @@ function AnimatedNumber({
 function useLiveFeed(
   gamePk: string,
   enabled: boolean,
+  feedDelayMs: FeedDelayMs,
   onFeedUpdate: (feed: LiveGameResponse) => void
 ) {
   const [feed, setFeed] = useState<LiveGameResponse | null>(null);
@@ -470,23 +505,54 @@ function useLiveFeed(
   const [checkedAt, setCheckedAt] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [queueVersion, setQueueVersion] = useState(0);
   const appliedTimecode = useRef("");
+  const hasAppliedFeed = useRef(false);
+  const queuedFeeds = useRef<QueuedFeedSnapshot[]>([]);
 
   const applyFeed = useCallback(
     (nextFeed: LiveGameResponse, nextTimecode: string) => {
-      if (nextTimecode && appliedTimecode.current > nextTimecode) {
+      if (nextTimecode && appliedTimecode.current >= nextTimecode) {
         return;
       }
 
       appliedTimecode.current = nextTimecode;
+      hasAppliedFeed.current = true;
       setFeed(nextFeed);
+      setLoading(false);
       onFeedUpdate(nextFeed);
     },
     [onFeedUpdate]
   );
 
+  const queueFeed = useCallback(
+    (nextFeed: LiveGameResponse, nextTimecode: string) => {
+      if (nextTimecode && appliedTimecode.current >= nextTimecode) {
+        return;
+      }
+
+      queuedFeeds.current = [
+        ...queuedFeeds.current.filter(
+          (snapshot) => snapshot.timecode !== nextTimecode
+        ),
+        {
+          feed: nextFeed,
+          timecode: nextTimecode,
+          receivedAt: Date.now(),
+        },
+      ].sort(
+        (firstSnapshot, secondSnapshot) =>
+          firstSnapshot.receivedAt - secondSnapshot.receivedAt
+      );
+      setQueueVersion((currentVersion) => currentVersion + 1);
+    },
+    []
+  );
+
   const loadFeed = useCallback(
     async (force = false) => {
+      let shouldKeepLoadingForDelay = false;
+
       try {
         setError("");
 
@@ -513,16 +579,61 @@ function useLiveFeed(
         setCheckedAt(data.checkedAt);
 
         if (data.changed && data.feed) {
-          applyFeed(data.feed, data.timecode);
+          queueFeed(data.feed, data.timecode);
+          shouldKeepLoadingForDelay = !hasAppliedFeed.current;
         }
       } catch {
         setError("Could not load live feed.");
       } finally {
-        setLoading(false);
+        if (
+          !shouldKeepLoadingForDelay &&
+          (hasAppliedFeed.current || queuedFeeds.current.length === 0)
+        ) {
+          setLoading(false);
+        }
       }
     },
-    [applyFeed, gamePk, timecode]
+    [gamePk, queueFeed, timecode]
   );
+
+  useEffect(() => {
+    if (!enabled || queuedFeeds.current.length === 0) {
+      return;
+    }
+
+    const flushReadyFeeds = () => {
+      const now = Date.now();
+      const dueSnapshots: QueuedFeedSnapshot[] = [];
+      const pendingSnapshots: QueuedFeedSnapshot[] = [];
+
+      queuedFeeds.current.forEach((snapshot) => {
+        if (snapshot.receivedAt + feedDelayMs <= now) {
+          dueSnapshots.push(snapshot);
+          return;
+        }
+
+        pendingSnapshots.push(snapshot);
+      });
+
+      queuedFeeds.current = pendingSnapshots;
+      dueSnapshots.forEach((snapshot) => {
+        applyFeed(snapshot.feed, snapshot.timecode);
+      });
+
+      if (queuedFeeds.current.length) {
+        setQueueVersion((currentVersion) => currentVersion + 1);
+      }
+    };
+
+    const nextSnapshot = queuedFeeds.current[0];
+    const nextDelayMs = Math.max(
+      0,
+      nextSnapshot.receivedAt + feedDelayMs - Date.now()
+    );
+    const timer = window.setTimeout(flushReadyFeeds, nextDelayMs);
+
+    return () => window.clearTimeout(timer);
+  }, [applyFeed, enabled, feedDelayMs, queueVersion]);
 
   useEffect(() => {
     if (!enabled) {
@@ -658,6 +769,48 @@ function HalfInningMarker({
         </span>
       </ChangePulse>
     </span>
+  );
+}
+
+function FeedDelayControl({
+  feedDelayMs,
+  onChange,
+}: {
+  feedDelayMs: FeedDelayMs;
+  onChange: (feedDelayMs: FeedDelayMs) => void;
+}) {
+  return (
+    <div className="flex h-10 items-center gap-2 rounded-lg border border-[#3d454e] bg-[#23272d] px-2">
+      <span className="text-[11px] font-semibold uppercase text-[#87919c]">
+        Delay
+      </span>
+      <div
+        role="group"
+        aria-label="Live feed delay"
+        className="flex overflow-hidden rounded-md border border-[#3d454e]"
+      >
+        {FEED_DELAY_OPTIONS_MS.map((delayMs) => {
+          const active = delayMs === feedDelayMs;
+
+          return (
+            <button
+              key={delayMs}
+              type="button"
+              aria-pressed={active}
+              onClick={() => onChange(delayMs)}
+              className={classNames(
+                "h-7 border-l border-[#3d454e] px-2 text-[11px] font-semibold first:border-l-0 sm:px-2.5",
+                active
+                  ? "bg-[#dcff00] text-[#17191b]"
+                  : "bg-[#191b1f] text-[#aeb6bf] transition hover:bg-[#272c33] hover:text-[#f6f7f2]"
+              )}
+            >
+              {delayMs / 1000} sec
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -1187,6 +1340,9 @@ function RecentPlaysPanel({
 
 export default function LiveGameClient({ gamePk }: { gamePk: string }) {
   const [storageLoaded, setStorageLoaded] = useState(false);
+  const [feedDelayMs, setFeedDelayMs] = useState<FeedDelayMs>(
+    DEFAULT_FEED_DELAY_MS
+  );
   const [selectedOutcome, setSelectedOutcome] = useState<SelectedOutcome | null>(
     null
   );
@@ -1244,6 +1400,7 @@ export default function LiveGameClient({ gamePk }: { gamePk: string }) {
       const storedState = readStoredGameState(gamePk);
       const storedAppearances = storedState?.appearances ?? [];
 
+      setFeedDelayMs(readStoredFeedDelay());
       setSelectedOutcome(null);
       setResults(storedState?.results ?? []);
       setAppearances(storedAppearances);
@@ -1258,6 +1415,14 @@ export default function LiveGameClient({ gamePk }: { gamePk: string }) {
 
     return () => window.clearTimeout(timer);
   }, [gamePk, updatePendingPrediction]);
+
+  useEffect(() => {
+    if (!storageLoaded) {
+      return;
+    }
+
+    writeStoredFeedDelay(feedDelayMs);
+  }, [feedDelayMs, storageLoaded]);
 
   useEffect(() => {
     if (!storageLoaded) {
@@ -1378,6 +1543,7 @@ export default function LiveGameClient({ gamePk }: { gamePk: string }) {
   const { feed, loading, error, refresh, checkedAt } = useLiveFeed(
     gamePk,
     storageLoaded,
+    feedDelayMs,
     handleFeedUpdate
   );
   const countPulseValue = feed ? countLabel(feed.balls, feed.strikes) : null;
@@ -1448,7 +1614,11 @@ export default function LiveGameClient({ gamePk }: { gamePk: string }) {
             </h1>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <FeedDelayControl
+              feedDelayMs={feedDelayMs}
+              onChange={setFeedDelayMs}
+            />
             <span
               className={`rounded-lg border px-3 py-2 text-xs font-semibold uppercase ${
                 feed?.status.isLive
